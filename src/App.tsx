@@ -1,4 +1,4 @@
-import React, { lazy } from 'react'
+import React, { Suspense, lazy } from 'react'
 import { Route, Routes } from 'react-router-dom'
 
 import { Layout } from '@/components/layout/Layout'
@@ -20,6 +20,7 @@ const OffersPage = page(() => import('@/pages/OffersPage'), 'OffersPage')
 const OfferPage = page(() => import('@/pages/OffersPage'), 'OfferPage')
 const TrendsPage = page(() => import('@/pages/TrendsPage'), 'TrendsPage')
 const SearchPage = page(() => import('@/pages/SearchPage'), 'SearchPage')
+const AdminApp = page(() => import('@/admin/AdminApp'), 'AdminApp')
 const LegalPage = page(() => import('@/pages/LegalPage'), 'LegalPage')
 const NotFoundPage = page(() => import('@/pages/NotFoundPage'), 'NotFoundPage')
 
@@ -31,6 +32,9 @@ export function App({ preview = 'live' }: { preview?: PreviewState }) {
   return (
     <PreviewContext.Provider value={preview}>
       <Routes>
+        {/* The staff dashboard has its own shell: no masthead, adverts or reader popups. */}
+        <Route path="admin" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+        <Route path="admin/:tab" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
         <Route element={<Layout />}>
           <Route index element={<HomePage />} />
           <Route path="story/:storyId" element={<StoryPage />} />

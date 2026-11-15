@@ -13,11 +13,12 @@ import { Container, DeskHeading, Hl, MonoDate, TextLink } from '@/components/ui'
 import { CountUp } from '@/components/ui/CountUp'
 import { useSiteActions } from '@/lib/actions'
 import { useEdition } from '@/lib/edition'
-import { CATEGORIES, EDITION_DATE, STORIES, Story, getStory, sectionPath, storiesIn, storyPath } from '@/data'
+import { CATEGORIES, EDITION_DATE, STORIES, getStory, newestFirst, sectionPath, storiesIn, storyPath } from '@/data'
 
 const LEAD = 's-cop31'
 const RAIL = ['s-agoa', 's-nz']
-const story = (id: string) => getStory(id) as Story
+// A named story if it is still published, otherwise the newest one.
+const story = (id: string) => getStory(id) ?? newestFirst(STORIES)[0]
 
 /** Sticky side column that scrolls on its own if it is taller than the screen. */
 const railClass = 'no-scrollbar sticky top-[92px] max-h-[calc(100vh-108px)] overflow-y-auto'
@@ -73,7 +74,7 @@ export function HomePage() {
           </div>
           <aside aria-label="Also leading" className="min-w-0 lg:col-span-3 lg:border-l lg:border-rule-dark lg:pl-8">
             <p className="mb-1.5 text-sm text-mirror">Also leading today</p>
-            {RAIL.map(story).map((s, i) => (
+            {RAIL.map(getStory).filter((s) => !!s).map((s, i) => (
               <Link key={s.id} to={storyPath(s.id)} className={`group grid grid-cols-[116px_minmax(0,1fr)] items-start gap-x-3.5 py-4 lg:block lg:py-5 ${i === 0 ? 'pt-2.5' : 'border-t border-rule-dark'}`}>
                 <StoryImage story={s} caption={false} ratio="aspect-[4/3] lg:aspect-[2/1]" className="lg:mb-3.5" />
                 <div>

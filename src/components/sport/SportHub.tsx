@@ -48,7 +48,8 @@ export function SportHub() {
       {/* Competitions being followed */}
       <ul className="no-scrollbar -mx-[18px] mb-6 flex gap-3 overflow-x-auto px-[18px] sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-4">
         {COMPETITIONS.map((c) => {
-          const s = getStory(c.storyId) as Story
+          const s = getStory(c.storyId)
+          if (!s) return null
           return (
             <li key={c.id} data-reveal className="w-[250px] flex-none sm:w-auto">
               <Link to={storyPath(s.id)} className="group grid h-full grid-cols-[84px_minmax(0,1fr)] items-center gap-3 bg-white p-2.5 transition-shadow duration-200 hover:shadow-[0_14px_28px_-18px_rgba(14,20,36,.5)]">

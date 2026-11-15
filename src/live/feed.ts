@@ -4,21 +4,22 @@
  * One shared connection feeds every component on the page, so the bar under the masthead, the
  * wire on the front page and the desk wire on a section page always show the same updates.
  *
- * In this build the provider is simulated: updates are drawn from a fixed pool on a timer and
- * market figures drift slightly. To go live, replace `connect()` with a websocket / SSE
- * subscription to the licensed providers and call `push()` and `setQuotes()` from its handlers.
- * Nothing else in the site needs to change.
+ * The wire is a live stream from the MirrorActu API (GET /api/v1/wire/stream): editors file
+ * updates in the dashboard and they reach every open page at once. If the API cannot be
+ * reached, a simulated wire stands in so the page still works. Market quotes are not in the
+ * API yet and drift locally.
  */
 import { useMemo, useSyncExternalStore } from 'react'
 
 import type { CategoryId } from '@/data'
+import { apiOnline } from '@/lib/api'
 
 export type WireKind = 'update' | 'confirmed' | 'result' | 'data'
 export type WireItem = { id: number; time: string; desk: string; cat: CategoryId; text: string; storyId?: string; kind: WireKind }
 export type Quote = { id: string; label: string; value: number; change: number; unit: string; digits: number; stale?: boolean; storyId?: string }
 export type LiveStatus = 'connecting' | 'live'
 
-type LiveState = { status: LiveStatus; items: WireItem[]; quotes: Quote[] }
+type LiveState = { status: LiveStatus; items: WireItem[]; quotes: Quote[]; source: 'api' | 'simulated' }
 
 const POOL: Omit<WireItem, 'id' | 'time'>[] = [
   { desk: 'Climate', cat: 'climate', text: 'COP31: finance working group resumes after overnight session in Antalya.', storyId: 's-cop31', kind: 'update' },
@@ -60,7 +61,7 @@ const KEEP = 40
 const pad = (n: number) => String(n).padStart(2, '0')
 const clock = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
 
-let state: LiveState = { status: 'connecting', items: [], quotes: BASE_QUOTES }
+let state: LiveState = { status: 'connecting', items: [], quotes: BASE_QUOTES, source: 'simulated' }
 const listeners = new Set<() => void>()
 let timers: number[] = []
 let next = 0
@@ -79,37 +80,78 @@ export function setQuotes(quotes: Quote[]) {
   set({ quotes })
 }
 
-function connect() {
+let stream: EventSource | null = null
+
+type ApiWire = { id: number; at: string; desk: string; cat: CategoryId; text: string; storyId?: string; kind: WireKind }
+const fromApi = (w: ApiWire): WireItem => ({ id: w.id, time: clock(new Date(w.at)), desk: w.desk, cat: w.cat, text: w.text, storyId: w.storyId, kind: w.kind })
+
+/** Market quotes are not in the API yet, so they tick locally either way. */
+function tickQuotes() {
+  timers.push(
+    window.setInterval(() => {
+      setQuotes(
+        state.quotes.map((q) => {
+          if (q.stale || q.id === 'temp') return q
+          const drift = (Math.random() - 0.5) * 0.004
+          return { ...q, value: q.value * (1 + drift), change: +(q.change + drift * 100).toFixed(2) }
+        })
+      )
+    }, QUOTE_MS)
+  )
+}
+
+/** Stand-in wire, used only when the API cannot be reached. */
+function simulate() {
   timers.push(
     window.setTimeout(() => {
-      // Backfill: the whole pool, oldest first, spaced six minutes apart.
       const now = Date.now()
       const backfill = POOL.map((p, i) => ({ ...p, id: next++, time: clock(new Date(now - (POOL.length - i) * 6 * 60000)) })).reverse()
-      set({ status: 'live', items: backfill })
+      set({ status: 'live', items: backfill, source: 'simulated' })
       let n = 0
       timers.push(window.setInterval(() => push(POOL[n++ % POOL.length]), WIRE_MS))
-      timers.push(
-        window.setInterval(() => {
-          setQuotes(
-            state.quotes.map((q) => {
-              if (q.stale || q.id === 'temp') return q
-              const drift = (Math.random() - 0.5) * 0.004
-              return { ...q, value: q.value * (1 + drift), change: +(q.change + drift * 100).toFixed(2) }
-            })
-          )
-        }, QUOTE_MS)
-      )
     }, CONNECT_MS)
   )
 }
 
+/**
+ * Connect to the wire. With the API online this is a live stream (server-sent events): the
+ * last forty items arrive first, then each new one the moment an editor files it. If the API
+ * is offline, or the stream fails before it opens, the simulated wire takes over.
+ */
+function connect() {
+  tickQuotes()
+  if (!apiOnline || typeof EventSource === 'undefined') return simulate()
+  let opened = false
+  stream = new EventSource('/api/v1/wire/stream')
+  stream.addEventListener('backfill', (e) => {
+    opened = true
+    const items = (JSON.parse((e as MessageEvent).data) as ApiWire[]).map(fromApi)
+    next = Math.max(next, ...items.map((i) => i.id + 1))
+    set({ status: 'live', items, source: 'api' })
+  })
+  stream.addEventListener('item', (e) => {
+    const item = fromApi(JSON.parse((e as MessageEvent).data))
+    if (state.items.some((i) => i.id === item.id)) return
+    set({ items: [item, ...state.items].slice(0, KEEP) })
+  })
+  stream.onerror = () => {
+    // The browser retries an open stream by itself. One that never opened is given up on.
+    if (opened) return
+    stream?.close()
+    stream = null
+    simulate()
+  }
+}
+
 function disconnect() {
+  stream?.close()
+  stream = null
   timers.forEach((t) => {
     window.clearTimeout(t)
     window.clearInterval(t)
   })
   timers = []
-  state = { status: 'connecting', items: [], quotes: BASE_QUOTES }
+  state = { status: 'connecting', items: [], quotes: BASE_QUOTES, source: 'simulated' }
 }
 
 function subscribe(cb: () => void) {
@@ -125,6 +167,8 @@ const snapshot = () => state
 const useLive = () => useSyncExternalStore(subscribe, snapshot, snapshot)
 
 export const useLiveStatus = () => useLive().status
+/** 'api' when the wire is the real stream, 'simulated' when it is the stand-in. */
+export const useWireSource = () => useLive().source
 
 /** The wire, newest first. Narrow it to one desk or one story with `cat` / `storyId`. */
 export function useWire({ max = 8, cat, storyId }: { max?: number; cat?: CategoryId; storyId?: string } = {}) {

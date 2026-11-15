@@ -14,12 +14,82 @@ npm run typecheck   # TypeScript check
 When hosting the build, serve `index.html` for unknown paths so deep links such as
 `/story/s-cop31` load.
 
-## Deploy with Docker
+## The backend
 
-The site ships as one small container: nginx serving the built files as a non-root user.
+The site has its own API and database. `server/` is a Node (Fastify) API backed by Postgres; the website loads
+its edition from it at start-up and falls back to the bundled snapshot if it cannot be reached.
 
 ```
-cp deploy/env.example .env          # optional: Google ad ids, port
+docker compose up -d db api      # database + API on http://localhost:4000
+npm run dev                      # the site on :5173, with /api forwarded to the API
+```
+
+The first start creates the tables, loads the 15 November 2026 snapshot, and creates the first administrator
+from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. The dashboard is at **`/admin`**.
+
+### Getting in
+
+- **Readers** need no account. Everything personal (saved stories, likes, edition) stays in their browser.
+- **Staff** sign in at **`/admin`** (there is a *Staff sign-in* link in the footer under Company).
+- **Accounts are created for you.** List people in `ADMIN_EMAILS` and `EDITOR_EMAILS` and give a first password
+  in `ADMIN_PASSWORD`. Each time the API starts, anyone listed who has no account gets one. At their first
+  sign-in the dashboard makes them choose their own password before anything else opens.
+- Existing accounts are never changed by a restart: passwords are left alone and nobody is demoted or removed.
+- **Locked out?** Set `ADMIN_FORCE_RESET=true`, restart, sign in with `ADMIN_PASSWORD`, then remove the variable.
+- **One account by hand**, with a one-time password printed once:
+  `docker compose exec api node dist/create-admin.js ada@example.com "Ada Obi" admin`
+- Administrators can also add staff from the dashboard (**Staff**).
+
+Every API setting is listed with its default in `server/.env.example`.
+
+### API (`/api/v1`)
+
+| Endpoint | What it does |
+|---|---|
+| `GET /bootstrap` | The whole edition in one request: stories, sections, graphics, calendar, trend topics |
+| `GET /stories`, `GET /stories/:slug` | Stories, filterable by `desk` and `q` |
+| `GET /trends` | Today's trends, ranked by stories filed, wire activity and readership in the last 24 hours |
+| `GET /wire`, `GET /wire/stream` | The live wire; the stream pushes each update the moment it is filed |
+| `POST /subscribe`, `/corrections`, `/enquiries` | The three reader forms |
+| `POST /events` | A story view, sent only for readers who allowed measurement |
+| `POST /auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Staff sign-in |
+| `/admin/…` | Dashboard: overview and analytics, stories, wire, corrections, enquiries, subscribers, staff, audit log |
+
+### Dashboard (`/admin`)
+
+Layout: navigation on the left, the page in the middle, and a live **Now** rail on the right (the wire with a
+quick-file box, what needs an editor, today's trends, service status). Below 1280px the rail opens from the *Now*
+button in the top bar, sliding up from the bottom on phones; below 1024px navigation becomes a bottom bar and a menu.
+The code is in `src/admin/`: `AdminApp.tsx` (sign-in, shell, rail), `views.tsx` (the pages), `ui.tsx` (the design kit).
+
+- **Overview**: readers and views, a 14-day chart, most-read stories, readers by country and language, and the trends ranking with its score.
+- **Stories**: create, edit, publish and unpublish. A story's address never changes when its headline does.
+- **Live wire**: file an update and it reaches every open page at once.
+- **Inbox**: corrections from readers (with a status for each) and offer enquiries.
+- **Subscribers**: morning-email sign-ups; administrators can export a CSV.
+- **Staff** and **Audit log** (administrators): add or switch off accounts, and see who changed what.
+
+Two roles: **editor** (stories, wire, inbox) and **administrator** (everything).
+
+### Security
+
+- Passwords are hashed with scrypt; sessions are random tokens in an httpOnly cookie and only their hash is stored.
+- Five wrong passwords lock an account for fifteen minutes; sign-in and the forms are rate limited.
+- Requests that change data must come from the site's own address (`SITE_ORIGIN`), which stops other websites acting for a signed-in editor.
+- Every input is validated, every query is parameterised, request bodies are capped at 64 KB, and errors never expose internals.
+- The database is not exposed outside the container network. The API and web containers run as non-root on read-only file systems.
+- Readership stores no IP address: visitors are a daily hash that cannot be reversed, events are dropped after 90 days, and Global Privacy Control is honoured.
+- Every dashboard change is written to the audit log.
+
+Not built yet: an email service (so no confirmation emails are sent and subscribers stay "pending"), password reset by
+email, two-factor sign-in, and automatic database backups. Market quotes still tick locally.
+
+## Deploy with Docker
+
+Three containers: `web` (nginx serving the site and forwarding `/api/` to the API), `api` (Node) and `db` (Postgres).
+
+```
+cp deploy/env.example .env          # set the passwords and SITE_ORIGIN
 docker compose up -d --build        # build and start on http://localhost:8080
 docker compose logs -f web          # watch it
 docker compose down                 # stop it
@@ -31,7 +101,8 @@ Or without Compose: `docker build -t mirroractu .` then `docker run -d -p 8080:8
 |---|---|
 | `Dockerfile` | Stage 1 installs, typechecks and builds with Node 22. Stage 2 copies the result into `nginx-unprivileged` |
 | `deploy/nginx.conf.template` | Sends every page address (including `/fr/…`) to the app, caches hashed assets for a year and media for a week, never caches `index.html`, adds security headers, answers `/healthz` |
-| `docker-compose.yml` | One service, read-only file system, no extra privileges, restarts unless stopped |
+| `docker-compose.yml` | The three services, on read-only file systems with no extra privileges, restarting unless stopped |
+| `server/Dockerfile`, `server/railway.json` | The API container and its Railway settings |
 | `railway.json` | Tells Railway to build from the Dockerfile and check `/healthz` |
 | `deploy/env.example` | The settings, all optional. They are baked in at build time, so rebuild after changing them |
 
@@ -44,13 +115,19 @@ On a server:
 
 ### Railway
 
-1. In Railway: **New Project → Deploy from GitHub repo** and pick this repository. It finds the `Dockerfile` and
-   `railway.json` on its own. One service is all the site needs: no database, volume or worker.
-2. **Settings → Networking → Generate Domain** for a public `https://…up.railway.app` address (HTTPS is included).
-   Add your own domain in the same place.
-3. Optional, under **Variables**: the `VITE_…` settings from `deploy/env.example`. They are used while building,
-   so Railway rebuilds when you change them. Do not set `PORT`: Railway provides it and the container listens on it.
-4. Every push to `main` redeploys.
+Three services in one project:
+
+1. **Postgres**: *New → Database → PostgreSQL*.
+2. **api**: *New → GitHub repo* (this repository). In its settings set **Config file path** to `server/railway.json`
+   (it builds `server/Dockerfile`). Variables:
+   `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`, `SITE_ORIGIN=https://<your site address>`,
+   `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ characters), `ANALYTICS_SALT` (a long random string).
+   Do not give it a public domain: only the web service needs to reach it.
+3. **web**: *New → GitHub repo* (this repository again). It uses the root `railway.json` and `Dockerfile`. Variable:
+   `API_UPSTREAM=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}`. Then **Settings → Networking → Generate Domain**
+   for the public `https://…up.railway.app` address (HTTPS is included); add your own domain in the same place.
+4. Optional on **web**: the `VITE_…` settings from `deploy/env.example`. They are used while building.
+5. Do not set `PORT` on web: Railway provides it. Every push to `main` redeploys both services.
 
 Railway does not tell the app which country a reader is in, so editions use the device time zone there. For
 IP-accurate editions put Cloudflare in front of the Railway domain (it sends `CF-IPCountry`), or set `VITE_GEO_ENDPOINT`.
@@ -62,8 +139,9 @@ nginx passes it to the app and editions become IP-accurate. Without it, the devi
 
 ```
 index.html                 page shell and the first-load splash (logo, wordmark, progress bar)
-public/                    favicon; media/ holds the photographs and video
+public/                    favicon, manifest, service worker, offline page; brand/ (logo), icons/ (app icons), media/ (photos, video)
 Dockerfile, docker-compose.yml, deploy/   container build, web server config, settings template
+server/                    the API: Fastify + Postgres (routes, sign-in, migrations, first-run content)
 src/
   main.tsx                 entry: router + render
   App.tsx                  route table; every page except the front page is code-split
@@ -86,6 +164,7 @@ src/
     story/                 StoryParts (cards, rows, Confirmed / Still open ledger), Viz (charts),
                            StoryImage (photos and video with credits)
     ui/                    Container, Button, TextLink, Pill, PageHeader and other basics
+  admin/                   the staff dashboard at /admin
   data/
     index.ts               typed data access and helpers: the seam to swap for a CMS / API
     snapshot.ts            the 15 Nov 2026 story snapshot
@@ -103,6 +182,9 @@ src/
     translate.ts           language in the address (/fr/…), hreflang links, Google translation
     store.ts               saved stories, followed desks, read history, text size, consent (localStorage)
     share.ts               share sheet or copy link
+    api.ts                 client for the MirrorActu API (/api/v1)
+    meta.ts                page title and share tags for each route
+    pwa.ts                 service worker registration, install and update state
     actions.ts             useSiteActions(): open search, newsletter, cookie settings, advert info, corrections
     reveal.ts              scroll-reveal observer for `data-reveal` elements
     boot.ts                fades out the index.html splash once the app has mounted
@@ -164,6 +246,32 @@ edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
   house adverts and videos play with no pre-roll. If Google's script is blocked, the same fallback applies.
 - **Flights reference**: `AIRLINES` in `src/data/offers.ts` lists real airlines at Kigali with aircraft photos. It is
   labelled as reference, not advertising, and carries no prices.
+
+## The app (PWA)
+
+MirrorActu installs to a phone or computer like an app, from the browser.
+
+- **Files**: `public/manifest.webmanifest` (name, colours, icons, four shortcuts, two screenshots), `public/sw.js`
+  (the service worker), `public/offline.html`, icons in `public/icons/`.
+- **Offline**: the last edition, pages already opened, photos and fonts are kept on the device, so the site
+  opens and reads without a connection. The dashboard, sign-in, forms and Google services are never cached.
+- **Install**: `InstallPrompt` (in `components/overlays/AppPrompts.tsx`) is our own invitation, shown after a
+  reader has spent a little time on the site, and from *Get the app* in the footer. iPhone and iPad get the
+  two-tap instructions, since they have no install dialog.
+- **Updates**: when a new version has downloaded, a bar offers *Refresh now*.
+- The service worker only runs in a production build, so test it on the Docker site (port 8080), not `npm run dev`.
+
+## Logo
+
+The symbol is one file, `public/brand/mark.svg`. Replace it and the logo changes across the masthead, footer,
+dialogs, dashboard and offline page. `public/brand/` also has `mark-on-light.svg`, `logo.svg` (symbol and
+wordmark) and `share.png` (the image shown when a link is shared). The app icons in `public/icons/` and the
+animated splash are drawn from the same shape; regenerate them if the shape itself changes.
+
+## Page titles and link previews
+
+`src/lib/meta.ts` gives every route its own browser title, description and share tags (story headline and
+photo, section name, search term and so on). The masthead's top links underline the page you are on.
 
 ## Search and addresses
 
@@ -242,9 +350,7 @@ Every slot has a solid "Advertisement" (or "Sponsored") tag, names who paid, and
 
 ## Not connected yet
 
-Each of these says so on screen:
-
-- **Live feeds**: `src/live/feed.ts` simulates the provider. Replace `connect()` with the real subscription.
+- **Market quotes**: they still tick locally in `src/live/feed.ts`. The wire itself is real, from the API.
+- **Email**: sign-ups are stored but no email service is connected, so nothing is sent.
 - **Ad server and offers**: advertisers, fares, schedules and prices in `src/data/offers.ts` are placeholders (the airports, time zones and places are real). Replace with the ad server and partner feeds.
-- **Email sign-up and corrections form**: validate only; nothing is sent.
 - **Exchange rates, legal pages**: waiting on a provider and legal review.

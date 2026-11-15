@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
 import { CategoryId, storyPath } from '@/data'
-import { WIRE_KIND_LABEL, WireItem, formatQuote, useLiveStatus, useMarkets, useWire } from '@/live/feed'
+import { WIRE_KIND_LABEL, WireItem, formatQuote, useLiveStatus, useMarkets, useWire, useWireSource } from '@/live/feed'
 import { useStoredValue } from '@/lib/store'
 import { Bone } from '@/components/loading/Loading'
 import { Container } from '@/components/ui'
@@ -14,6 +14,7 @@ const EASE = [0.23, 1, 0.32, 1] as const
 /** "Live" badge with a slow pulse. Reads "Connecting" until the feed answers. */
 export function LiveBadge({ dark = false, note = true }: { dark?: boolean; note?: boolean }) {
   const live = useLiveStatus() === 'live'
+  const simulated = useWireSource() === 'simulated'
   return (
     <span className={twMerge('flex items-center gap-2 text-[13px]', dark ? 'text-mirror' : 'text-muted')}>
       <span className="relative flex size-2.5">
@@ -21,7 +22,7 @@ export function LiveBadge({ dark = false, note = true }: { dark?: boolean; note?
         <span className={twMerge('relative size-2.5 rounded-full', live ? 'bg-signal' : 'bg-faint')} />
       </span>
       <b className={twMerge('font-semibold', dark ? 'text-white' : 'text-ink')}>{live ? 'Live' : 'Connecting'}</b>
-      {note && <span>Simulated provider in this preview</span>}
+      {note && <span>{simulated ? 'Simulated wire: the API is offline' : 'Streaming from the newsroom'}</span>}
     </span>
   )
 }

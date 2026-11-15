@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useSiteActions } from '@/lib/actions'
+import { ApiError, api } from '@/lib/api'
 import { useEdition } from '@/lib/edition'
 import { CATEGORIES, sectionPath } from '@/data'
 import { Container } from '@/components/ui'
@@ -71,6 +72,8 @@ export function Footer({ formRef, onSearch, onTop }: Props) {
             <li><FootLink to="/legal">Privacy</FootLink></li>
             <li><FootLink to="/legal">Terms of use</FootLink></li>
             <li><FootLink to="/legal#credits">Picture credits</FootLink></li>
+            <li><button type="button" onClick={() => window.dispatchEvent(new Event('ma:install'))} className="text-left hover:text-white">Get the app</button></li>
+            <li><FootLink to="/admin">Staff sign-in</FootLink></li>
             <li><button type="button" onClick={openCookieSettings} className="text-left hover:text-white">Cookie settings</button></li>
           </Column>
         </div>
@@ -133,13 +136,9 @@ function SignupForm({ formRef }: { formRef: React.RefObject<HTMLFormElement> }) 
       ref={formRef}
       noValidate
       className="min-w-0"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault()
-        setMessage(
-          /^\S+@\S+\.\S+$/.test(email.trim())
-            ? 'That address is valid. Sign-up opens at launch, so nothing was sent or stored.'
-            : 'Enter an email address such as name@example.com.'
-        )
+        setMessage(await subscribe(email, 'footer'))
       }}
     >
       <h4 className="mb-1.5 text-xl font-semibold tracking-[-0.01em] text-white">Get the morning email</h4>
@@ -148,6 +147,17 @@ function SignupForm({ formRef }: { formRef: React.RefObject<HTMLFormElement> }) 
       <p role="status" className="mt-2.5 min-h-5 text-[13.5px] text-mirror-light">{message}</p>
     </form>
   )
+}
+
+/** Sign an address up for the morning email. Returns the sentence to show the reader. */
+export async function subscribe(email: string, source: string): Promise<string> {
+  if (!/^\S+@\S+\.\S+$/.test(email.trim())) return 'Enter an email address such as name@example.com.'
+  try {
+    await api('/subscribe', { body: { email: email.trim(), source } })
+    return 'Thank you. Your address is saved, and we will email you to confirm before the first edition is sent.'
+  } catch (e) {
+    return e instanceof ApiError ? e.message : 'Something went wrong. Try again.'
+  }
 }
 
 export function EmailField({ value, onChange, submitLabel = 'Sign up' }: { value: string; onChange: (v: string) => void; submitLabel?: string }) {

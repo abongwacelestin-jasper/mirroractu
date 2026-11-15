@@ -4,6 +4,8 @@ import { Outlet, useLocation } from 'react-router-dom'
 
 import { AdInfo, SiteActions, SiteActionsContext } from '@/lib/actions'
 import { dismissBoot, hasBootSplash } from '@/lib/boot'
+import { usePageMeta } from '@/lib/meta'
+import { startPwa } from '@/lib/pwa'
 import { initReveal } from '@/lib/reveal'
 import { useConsent } from '@/lib/consent'
 import { alternateLinks, applyLocale } from '@/lib/translate'
@@ -18,6 +20,7 @@ import { TabBar } from '@/components/layout/TabBar'
 import { ConsentModal } from '@/components/overlays/ConsentModal'
 import { CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
 import { EditionModal, LanguageSuggestion, TranslationBar } from '@/components/overlays/EditionModal'
+import { AppStatusBars, InstallPrompt } from '@/components/overlays/AppPrompts'
 import { HousePromo } from '@/components/overlays/HousePromo'
 import { TrendsModal } from '@/components/overlays/TrendsModal'
 import { SearchDialog } from '@/components/layout/SearchDialog'
@@ -44,6 +47,7 @@ const isAdFree = (path: string) => AD_FREE.includes(path) || path.startsWith('/o
  */
 export function Layout() {
   const preview = usePreviewState()
+  usePageMeta()
   const { pathname } = useLocation()
   const [search, setSearch] = useState<{ open: boolean; query: string }>({ open: false, query: '' })
   const [booting, setBooting] = useState(() => !hasBootSplash())
@@ -79,6 +83,7 @@ export function Layout() {
   useEffect(() => {
     dismissBoot()
     initReveal()
+    startPwa()
     const t = window.setTimeout(() => setBooting(false), SPLASH_MS)
     return () => window.clearTimeout(t)
   }, [])
@@ -143,6 +148,7 @@ export function Layout() {
             Skip to content
           </a>
           <Masthead onSearch={() => actions.openSearch()} onSubscribe={actions.openNewsletter} />
+          <AppStatusBars />
           <LiveBar />
           <TranslationBar />
           <LanguageSuggestion enabled={popupsAllowed} />
@@ -195,6 +201,7 @@ export function Layout() {
           <AnchorAd enabled={popupsAllowed && !isAdFree(pathname)} />
           <LiveAlert enabled={popupsAllowed} />
           <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
+          <InstallPrompt enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <TabBar />
         </div>
       </SiteActionsContext.Provider>

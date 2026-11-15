@@ -1,13 +1,74 @@
-# MirrorActu in one command:
+# MirrorActu: the website, its API and its database.
 #
-#   docker compose up -d --build      start (or update) the site on http://localhost:8080
-#   docker compose logs -f web        watch the web server
-#   docker compose down               stop it
+#   docker compose up -d --build      start (or update) everything; the site is on http://localhost:8080
+#   docker compose up -d db api       just the API and database, for `npm run dev` (which proxies /api to :4000)
+#   docker compose logs -f api        watch the API
+#   docker compose down               stop it (data is kept)
+#   docker compose down -v            stop it and delete the database
 #
 # Settings come from a file named .env beside this one (copy deploy/env.example to .env).
-# They are build-time settings: after changing them, run `docker compose up -d --build`.
 
 services:
+  # ---------- Database ----------
+  db:
+    image: postgres:16-alpine
+    container_name: mirroractu-db
+    environment:
+      POSTGRES_USER: mirroractu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mirroractu-dev-only}
+      POSTGRES_DB: mirroractu
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirroractu -d mirroractu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # Not published to the host: only the API can reach it.
+
+  # ---------- API ----------
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: mirroractu-api:latest
+    container_name: mirroractu-api
+    environment:
+      DATABASE_URL: postgres://mirroractu:${POSTGRES_PASSWORD:-mirroractu-dev-only}@db:5432/mirroractu
+      PORT: "4000"
+      NODE_ENV: ${NODE_ENV:-development}
+      SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:8080,http://localhost:5173}
+      # Staff accounts, created automatically on every start. See server/.env.example.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      EDITOR_EMAILS: ${EDITOR_EMAILS:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_FORCE_RESET: ${ADMIN_FORCE_RESET:-}
+      SESSION_DAYS: ${SESSION_DAYS:-7}
+      LOGIN_MAX_FAILS: ${LOGIN_MAX_FAILS:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
+      EVENTS_RETENTION_DAYS: ${EVENTS_RETENTION_DAYS:-90}
+      SEED_CONTENT: ${SEED_CONTENT:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      ANALYTICS_SALT: ${ANALYTICS_SALT:-dev-only-salt-change-me}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # For local development only (vite proxies /api here). Remove on a server: nginx reaches the API privately.
+      - "127.0.0.1:${API_PORT:-4000}:4000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------- Website ----------
   web:
     build:
       context: .
@@ -21,6 +82,10 @@ services:
         VITE_GEO_ENDPOINT: ${VITE_GEO_ENDPOINT:-}
     image: mirroractu:latest
     container_name: mirroractu
+    environment:
+      API_UPSTREAM: http://api:4000
+    depends_on:
+      - api
     ports:
       # host:container. Change the left side to serve on another port, e.g. "80:8080".
       - "${PORT:-8080}:8080"
@@ -29,10 +94,13 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      # nginx writes its config here at start-up (the port is filled in from a template).
+      # nginx writes its config here at start-up (settings are filled in from a template).
       # It must belong to the nginx user (id 101), who is not root.
       - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  db-data:

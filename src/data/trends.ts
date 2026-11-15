@@ -30,6 +30,13 @@ export const TREND_TOPICS: TrendTopic[] = [
   { id: 'leagues', label: 'Premier League and NBA', query: 'premier league', cat: 'sport', storyIds: ['s-epl', 's-nba'] },
 ]
 
+/** Replace the bundled topics with the ones from the API. */
+export function hydrateTopics(topics?: TrendTopic[]) {
+  if (!topics?.length) return
+  TREND_TOPICS.length = 0
+  TREND_TOPICS.push(...topics)
+}
+
 export type TrendVideo = Video & {
   id: string
   topicId: string

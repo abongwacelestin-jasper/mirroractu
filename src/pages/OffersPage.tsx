@@ -9,6 +9,7 @@ import { EmailField } from '@/components/layout/Footer'
 import { Container, Hl, PageHeader, TextLink } from '@/components/ui'
 import type { Media } from '@/data/media'
 import { ADVERTISERS, AIRLINES, Advertiser, FLIGHT_GALLERY, OFFER_CATEGORIES, Offer, OfferCategoryId, airlinesOn, findOffer, offerPath, offersPath } from '@/data/offers'
+import { api } from '@/lib/api'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 const ICONS: Record<OfferCategoryId, React.ComponentType<{ className?: string }>> = {
@@ -385,7 +386,7 @@ export function OfferPage() {
                 <p className="mt-1.5 text-[14.5px] opacity-90">{offer.priceNote}</p>
                 <p className="mt-4 border-t pt-3 text-[14px]" style={{ borderColor: `${advertiser.accent}55` }}>{offer.terms}</p>
               </div>
-              <Enquiry key={offer.id} advertiser={advertiser} />
+              <Enquiry key={offer.id} advertiser={advertiser} offerId={offer.id} />
               <ol aria-label="How it works" className="mt-6 border-t-2 border-ink">
                 {advertiser.steps.map(([title, text], i) => (
                   <li key={title} className="grid grid-cols-[28px_minmax(0,1fr)] border-b border-rule py-3">
@@ -453,27 +454,33 @@ export function OfferPage() {
   )
 }
 
-function Enquiry({ advertiser }: { advertiser: Advertiser }) {
+function Enquiry({ advertiser, offerId }: { advertiser: Advertiser; offerId: string }) {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'error' | 'done'>('idle')
   return (
     <div className="border border-t-0 border-rule p-6">
       {state === 'done' ? (
         <p role="status" className="border-l-[3px] border-signal bg-paper p-4 text-[15px]">
-          That address is valid, but nothing was sent. In this preview the advertiser is a placeholder, so there is no booking to make yet.
+          Thank you. Your enquiry is recorded. This advertiser is a placeholder in the preview, so no booking follows yet.
         </p>
       ) : (
         <form
           noValidate
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
-            setState(/^\S+@\S+\.\S+$/.test(email.trim()) ? 'done' : 'error')
+            if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setState('error')
+            try {
+              await api('/enquiries', { body: { email: email.trim(), advertiserId: advertiser.id, offerId } })
+              setState('done')
+            } catch {
+              setState('error')
+            }
           }}
         >
           <h2 className="text-[19px]">{advertiser.cta}</h2>
           <p className="mb-3 mt-1 text-[14px] text-muted">Leave an email address and {advertiser.name} replies with the next step.</p>
           <div className="rounded-full border border-ink/35"><EmailField value={email} onChange={setEmail} submitLabel="Send" /></div>
-          <p role="status" className="mt-2 min-h-5 text-sm text-signal">{state === 'error' ? 'Enter an email address such as name@example.com.' : ''}</p>
+          <p role="status" className="mt-2 min-h-5 text-sm text-signal">{state === 'error' ? 'Enter an email address such as name@example.com, then try again.' : ''}</p>
         </form>
       )}
     </div>

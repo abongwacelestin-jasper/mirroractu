@@ -41,13 +41,13 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
             </button>
           </span>
           <nav aria-label="Reader tools" className="flex gap-6">
-            <Link to="/saved" className="hover:text-white">Saved stories{saved.length ? ` (${saved.length})` : ''}</Link>
-            <Link to="/trends" className="hidden hover:text-white md:inline">Trends</Link>
-            <Link to="/brief" className="hidden hover:text-white md:inline">The Brief</Link>
-            <Link to="/coming-up" className="hidden hover:text-white md:inline">Coming up</Link>
-            <Link to="/live" className="hidden hover:text-white md:inline">Live data</Link>
-            <Link to="/how-we-work" className="hidden hover:text-white md:inline">How we work</Link>
-            <Link to="/offers" className="hidden hover:text-white md:inline">Offers <span className="ml-1 bg-mirror/20 px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.12em]">Ad</span></Link>
+            <NavLink to="/saved" className={({ isActive }) => `hover:text-white ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>Saved stories{saved.length ? ` (${saved.length})` : ''}</NavLink>
+            <NavLink to="/trends" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>Trends</NavLink>
+            <NavLink to="/brief" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>The Brief</NavLink>
+            <NavLink to="/coming-up" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>Coming up</NavLink>
+            <NavLink to="/live" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>Live data</NavLink>
+            <NavLink to="/how-we-work" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>How we work</NavLink>
+            <NavLink to="/offers" className={({ isActive }) => `hidden hover:text-white md:inline ${isActive ? 'font-semibold text-white underline decoration-signal decoration-2 underline-offset-[5px]' : ''}`}>Offers <span className="ml-1 bg-mirror/20 px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.12em]">Ad</span></NavLink>
           </nav>
         </Container>
       </div>

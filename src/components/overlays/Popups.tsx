@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 import { CATEGORIES } from '@/data'
 import { useFollowedSections, useStoredValue } from '@/lib/store'
-import { EmailField } from '@/components/layout/Footer'
+import { EmailField, subscribe } from '@/components/layout/Footer'
 import { Logo } from '@/components/brand/Logo'
 import { CorrectionForm } from '@/components/overlays/CorrectionForm'
 import { Modal } from '@/components/overlays/Modal'
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui'
 export function NewsletterModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'error' | 'done'>('idle')
+  const [message, setMessage] = useState('')
   useEffect(() => {
     if (open) setState('idle')
   }, [open])
@@ -28,7 +29,7 @@ export function NewsletterModal({ open, onClose }: { open: boolean; onClose: () 
         <>
           <h2 className="mt-5 font-serif text-[40px] font-normal leading-none">You are on the list.</h2>
           <p className="mt-3 text-mirror-light">
-            Preview edition: the address is valid, but sign-up opens at launch, so nothing was sent or stored.
+            Your address is saved. We will email you to confirm before the first edition is sent, and every email has a one-click unsubscribe.
           </p>
           <Button className="mt-6" onClick={onClose}>Back to the news</Button>
         </>
@@ -45,14 +46,16 @@ export function NewsletterModal({ open, onClose }: { open: boolean; onClose: () 
           <form
             noValidate
             className="mt-6"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
-              setState(/^\S+@\S+\.\S+$/.test(email.trim()) ? 'done' : 'error')
+              const result = await subscribe(email, 'modal')
+              setMessage(result)
+              setState(result.startsWith('Thank you') ? 'done' : 'error')
             }}
           >
             <EmailField value={email} onChange={setEmail} />
             <p role="status" className="mt-2.5 min-h-5 text-sm text-signal">
-              {state === 'error' ? 'Enter an email address such as name@example.com.' : ''}
+              {state === 'error' ? message : ''}
             </p>
           </form>
         </>
@@ -73,7 +76,7 @@ export function CorrectionModal({ open, storyTitle, onClose }: { open: boolean; 
           'Tell us which story and what looks wrong. An editor checks every report against the sources.'
         )}
       </p>
-      <CorrectionForm key={String(open)} idPrefix="modal-fb" />
+      <CorrectionForm key={String(open)} idPrefix="modal-fb" storyTitle={storyTitle} />
       <p className="mt-3 border-t border-rule pt-3 text-[13px] text-muted">
         Corrections are made in the open with a dated note. Earlier versions are kept.
       </p>

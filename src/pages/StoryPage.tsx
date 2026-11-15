@@ -14,7 +14,11 @@ import { Button, Container, Hl, TextLink, buttonClass } from '@/components/ui'
 import { Viz } from '@/components/story/Viz'
 import { STORIES, TIERS, VIZ, categoryName, formatDate, newestFirst, resolveStory, sectionPath, storyPath } from '@/data'
 import { useWire } from '@/live/feed'
+import { api } from '@/lib/api'
+import { useConsent } from '@/lib/consent'
+import { useEdition } from '@/lib/edition'
 import { useReadStories, useSavedStories, useTextSize } from '@/lib/store'
+import { currentLanguage } from '@/lib/translate'
 import { SideBlock } from '@/pages/SectionPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -28,10 +32,15 @@ export function StoryPage() {
   const toast = useToast()
   const [progress, setProgress] = useState(0)
   const [read, markRead] = useReadStories()
+  const { allows } = useConsent()
+  const [country] = useEdition()
 
   // Opening a story marks it read: the feed and The Brief use this.
   useEffect(() => {
-    if (story) markRead(story.id)
+    if (!story) return
+    markRead(story.id)
+    // Readership is counted only for readers who allowed measurement. No IP address is stored.
+    if (allows('measurement')) api('/events', { body: { type: 'view', storyId: story.id, path: storyPath(story.id), country: country.code, lang: currentLanguage() } }).catch(() => {})
   }, [story?.id])
   const liveUpdates = useWire({ storyId, max: 1 }).items.length > 0
 
@@ -195,7 +204,7 @@ export function StoryPage() {
             )}
             <AdSlot format="mpu" slot={2} placement={`the ${sectionName} story page, right-hand column`} className="mb-10" />
             <SideBlock title="Spotted a mistake?">
-              <CorrectionToggle key={story.id} />
+              <CorrectionToggle key={story.id} storyTitle={story.h} />
             </SideBlock>
             <div className="hidden lg:sticky lg:top-24 lg:block">
               <AdSlot format="halfpage" slot={3} placement={`the ${sectionName} story page, right-hand column`} />
@@ -208,14 +217,14 @@ export function StoryPage() {
   )
 }
 
-function CorrectionToggle() {
+function CorrectionToggle({ storyTitle }: { storyTitle: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="pt-2 font-semibold">
         Report a correction <span className="text-signal">{open ? '–' : '+'}</span>
       </button>
-      {open && <CorrectionForm />}
+      {open && <CorrectionForm storyTitle={storyTitle} />}
     </div>
   )
 }

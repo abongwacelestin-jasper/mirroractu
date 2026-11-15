@@ -2,11 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MirrorActu: Today, reflected. Tomorrow, remembered.</title>
     <meta name="description" content="MirrorActu shows what happened, what is confirmed, what is still open and where it came from." />
     <meta name="theme-color" content="#0e1424" />
+    <meta name="color-scheme" content="light" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Installable app (PWA) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="application-name" content="MirrorActu" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MirrorActu" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- Defaults for link previews. src/lib/meta.ts replaces these for each page. -->
+    <meta property="og:site_name" content="MirrorActu" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MirrorActu: Today, reflected. Tomorrow, remembered." />
+    <meta property="og:description" content="MirrorActu shows what happened, what is confirmed, what is still open and where it came from." />
+    <meta property="og:image" content="/brand/share.png" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

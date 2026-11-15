@@ -1,0 +1,142 @@
+/**
+ * The public API: everything the website reads, and the three forms readers can send.
+ * Read endpoints need no sign-in. Form endpoints are rate limited and must come from the site.
+ */
+import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
+
+import { sameOrigin, visitorHash } from '../auth'
+import { one, q } from '../db'
+import { onWire, recentWire } from '../wire'
+
+const email = z.string().trim().toLowerCase().email().max(254)
+const strict = { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }
+
+/** Everything about one story the site needs, with its slug and version. */
+const storyOut = (r: any) => ({ ...r.data, id: r.id, slug: r.slug, version: r.version })
+
+export async function content() {
+  const rows = await q<{ key: string; data: unknown }>('SELECT key, data FROM content')
+  return Object.fromEntries(rows.map((r) => [r.key, r.data]))
+}
+
+/** Today's trends: coverage, plus wire activity and readership in the last 24 hours. */
+export async function trends() {
+  const topics = ((await one<{ data: any[] }>("SELECT data FROM content WHERE key = 'trendTopics'"))?.data ?? []) as { id: string; storyIds: string[] }[]
+  const published = new Set((await q<{ id: string }>('SELECT id FROM stories WHERE published')).map((r) => r.id))
+  const wire = await q<{ story_id: string; n: string; last: Date }>("SELECT story_id, count(*) AS n, max(at) AS last FROM wire_items WHERE at > now() - interval '24 hours' AND story_id IS NOT NULL GROUP BY story_id")
+  const views = await q<{ story_id: string; n: string }>("SELECT story_id, count(DISTINCT visitor) AS n FROM events WHERE type = 'view' AND at > now() - interval '24 hours' AND story_id IS NOT NULL GROUP BY story_id")
+  const latest = (await q<{ story_id: string }>('SELECT story_id FROM wire_items ORDER BY at DESC LIMIT 5')).map((r) => r.story_id)
+  const wireBy = new Map(wire.map((w) => [w.story_id, Number(w.n)]))
+  const viewsBy = new Map(views.map((v) => [v.story_id, Number(v.n)]))
+
+  const base = [...topics].sort((a, b) => b.storyIds.length - a.storyIds.length).map((t) => t.id)
+  return topics
+    .map((t) => {
+      const ids = t.storyIds.filter((id) => published.has(id))
+      const wireCount = ids.reduce((n, id) => n + (wireBy.get(id) ?? 0), 0)
+      const readers = ids.reduce((n, id) => n + (viewsBy.get(id) ?? 0), 0)
+      const activeNow = ids.some((id) => latest.includes(id))
+      // One point per story, half a point per wire update, and readership on a log scale so one
+      // very popular story cannot swamp everything else.
+      const score = ids.length + wireCount * 0.5 + 2 * Math.log2(1 + readers) + (activeNow ? 0.75 : 0)
+      return { ...t, storyIds: ids, wireCount, readers, activeNow, score: Math.round(score * 100) / 100 }
+    })
+    .filter((t) => t.storyIds.length > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((t, i) => ({ ...t, rank: i + 1, moved: base.indexOf(t.id) - i }))
+}
+
+export async function publicRoutes(app: FastifyInstance) {
+  app.get('/health', async () => ({ ok: true, at: new Date().toISOString() }))
+
+  /** One request that gives the site its whole edition. */
+  app.get('/bootstrap', async (_req, reply) => {
+    const stories = (await q('SELECT id, slug, data, version FROM stories WHERE published ORDER BY story_date DESC, id')).map(storyOut)
+    reply.header('Cache-Control', 'public, max-age=5')
+    return { generatedAt: new Date().toISOString(), stories, ...(await content()) }
+  })
+
+  app.get('/stories', async (req) => {
+    const p = z.object({ desk: z.string().max(20).optional(), q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(req.query)
+    const rows = await q(
+      `SELECT id, slug, data, version FROM stories
+       WHERE published AND ($1::text IS NULL OR $1 = ANY(cats)) AND ($2::text IS NULL OR data::text ILIKE '%' || $2 || '%')
+       ORDER BY story_date DESC, id LIMIT $3`,
+      [p.desk ?? null, p.q?.trim() || null, p.limit]
+    )
+    return { stories: rows.map(storyOut) }
+  })
+
+  app.get('/stories/:key', async (req, reply) => {
+    const { key } = z.object({ key: z.string().max(200) }).parse(req.params)
+    const row = await one('SELECT id, slug, data, version FROM stories WHERE published AND (slug = $1 OR id = $1)', [key])
+    return row ? storyOut(row) : reply.code(404).send({ error: 'No story at this address.' })
+  })
+
+  app.get('/trends', async (_req, reply) => {
+    reply.header('Cache-Control', 'public, max-age=20')
+    return { generatedAt: new Date().toISOString(), trends: await trends() }
+  })
+
+  app.get('/wire', async (req) => {
+    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(100).default(40) }).parse(req.query)
+    return { items: await recentWire(limit) }
+  })
+
+  /** The live wire as a stream: the last items first, then each new one the moment it is filed. */
+  app.get('/wire/stream', async (req, reply) => {
+    reply.hijack()
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+    const send = (event: string, data: unknown) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    send('backfill', await recentWire(40))
+    const off = onWire((item) => send('item', item))
+    const beat = setInterval(() => reply.raw.write(': keep-alive\n\n'), 25000)
+    req.raw.on('close', () => {
+      clearInterval(beat)
+      off()
+    })
+  })
+
+  /* ---------- Forms ---------- */
+
+  app.post('/subscribe', strict, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    const body = z.object({ email, source: z.string().max(40).optional() }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Enter an email address such as name@example.com.' })
+    // The same answer whether or not the address was already there, so the form cannot be used to test who subscribes.
+    await q('INSERT INTO subscribers (email, source) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING', [body.data.email, body.data.source ?? null])
+    return { ok: true }
+  })
+
+  app.post('/corrections', strict, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    const body = z.object({ message: z.string().trim().min(5).max(4000), storyTitle: z.string().trim().max(300).optional(), email: email.optional().or(z.literal('')) }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Describe what we should check, in at least a few words.' })
+    await q('INSERT INTO corrections (story_title, message, email) VALUES ($1, $2, $3)', [body.data.storyTitle || null, body.data.message, body.data.email || null])
+    return { ok: true }
+  })
+
+  app.post('/enquiries', strict, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    const body = z.object({ email, advertiserId: z.string().max(80), offerId: z.string().max(80) }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Enter an email address such as name@example.com.' })
+    await q('INSERT INTO enquiries (advertiser_id, offer_id, email) VALUES ($1, $2, $3)', [body.data.advertiserId, body.data.offerId, body.data.email])
+    return { ok: true }
+  })
+
+  /**
+   * Readership. The site only calls this for readers who allowed measurement. It records the
+   * page and story, never the IP address: the visitor id is a daily hash that cannot be reversed.
+   */
+  app.post('/events', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    // Respect "do not track" style signals even if the page called us.
+    if (req.headers['sec-gpc'] === '1') return reply.code(204).send()
+    const body = z.object({ type: z.enum(['view']), storyId: z.string().max(80).optional(), path: z.string().max(300), country: z.string().max(3).optional(), lang: z.string().max(8).optional() }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Bad event.' })
+    const b = body.data
+    await q('INSERT INTO events (type, story_id, path, country, lang, visitor) VALUES ($1, $2, $3, $4, $5, $6)', [b.type, b.storyId ?? null, b.path, b.country ?? null, b.lang ?? null, visitorHash(req)])
+    return reply.code(204).send()
+  })
+}

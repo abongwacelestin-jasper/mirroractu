@@ -39,8 +39,11 @@ RUN npm run typecheck && npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS serve
 
 # The port to listen on. Railway and similar hosts set PORT themselves; otherwise 8080.
+# API_UPSTREAM is where /api/ requests are sent: the API service's private address.
 ENV PORT=8080 \
-    NGINX_ENVSUBST_FILTER=PORT
+    API_UPSTREAM=http://api:4000 \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    NGINX_ENVSUBST_FILTER="^(PORT|API_UPSTREAM|NGINX_LOCAL_RESOLVERS)$"
 
 # Turned into /etc/nginx/conf.d/default.conf at start-up, with ${PORT} filled in.
 COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template

@@ -102,12 +102,62 @@ export function slugify(text: string) {
 
 const SLUG_BY_ID = new Map<string, string>()
 const ID_BY_SLUG = new Map<string, string>()
-for (const s of STORIES) {
-  let slug = slugify(s.h)
-  // Two stories must never share an address.
-  if (ID_BY_SLUG.has(slug)) slug = `${slug}-${s.id.replace(/^s-/, '')}`
-  SLUG_BY_ID.set(s.id, slug)
-  ID_BY_SLUG.set(slug, s.id)
+
+/** Work out each story's address. A slug supplied with the story (from the API) wins over one made from the headline. */
+function indexSlugs() {
+  SLUG_BY_ID.clear()
+  ID_BY_SLUG.clear()
+  for (const s of STORIES) {
+    let slug = (s as Story & { slug?: string }).slug || slugify(s.h)
+    // Two stories must never share an address.
+    if (ID_BY_SLUG.has(slug)) slug = `${slug}-${s.id.replace(/^s-/, '')}`
+    SLUG_BY_ID.set(s.id, slug)
+    ID_BY_SLUG.set(slug, s.id)
+  }
+}
+indexSlugs()
+
+/** What GET /api/v1/bootstrap returns. */
+export type Edition = {
+  stories: Story[]
+  categories?: Category[]
+  tiers?: Record<Tier, [string, string]>
+  viz?: Record<string, VizSpec>
+  agenda?: AgendaItem[]
+  keyFigures?: Record<CategoryId, KeyFigure[]>
+  epl?: typeof EPL_TABLE
+  nba?: typeof NBA_RESULTS
+  searchTopics?: [string, string][]
+}
+
+const refill = <T,>(target: T[], source?: T[]) => {
+  if (!source) return
+  target.length = 0
+  target.push(...source)
+}
+const reassign = <T extends object>(target: T, source?: T) => {
+  if (!source) return
+  for (const k of Object.keys(target)) delete (target as any)[k]
+  Object.assign(target, source)
+}
+
+/**
+ * Replace the bundled snapshot with an edition from the API. It runs once, before the first
+ * render, and changes the exported lists in place, so every page reads the live edition
+ * without knowing where it came from. If the API is unreachable the snapshot stays.
+ */
+export function hydrate(edition: Edition) {
+  if (!edition?.stories?.length) return
+  refill(STORIES, edition.stories)
+  refill(CATEGORIES, edition.categories)
+  refill(AGENDA, edition.agenda)
+  refill(EPL_TABLE, edition.epl)
+  refill(NBA_RESULTS, edition.nba)
+  refill(SEARCH_TOPICS, edition.searchTopics)
+  reassign(TIERS, edition.tiers)
+  reassign(VIZ, edition.viz)
+  reassign(KEY_FIGURES, edition.keyFigures)
+  indexSlugs()
 }
 
 export const storySlug = (id: string) => SLUG_BY_ID.get(id) ?? id

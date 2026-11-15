@@ -10,7 +10,7 @@ import { Chip } from '@/pages/SectionPage'
 
 export function AgendaPage() {
   const [, nextLabel, nextTitle, , nextId] = AGENDA[0]
-  const nextStory = getStory(nextId) as Story
+  const nextStory = getStory(nextId)
   return (
     <>
       <PageHeader title="Coming up" intro="Dates worth knowing, taken from the stories we are following. Each links to the story behind it." />
@@ -28,12 +28,12 @@ export function AgendaPage() {
         </ul>
         <aside className="min-w-0 lg:col-span-4 lg:border-l lg:border-rule lg:pl-8">
           <div className="space-y-8 lg:sticky lg:top-[92px]">
-            <Link to={storyPath(nextId)} className="group block bg-ink p-5 text-white">
+            {nextStory && <Link to={storyPath(nextId)} className="group block bg-ink p-5 text-white">
               <p className="text-[13px] font-semibold text-signal">Next up · {nextLabel}</p>
               <h2 className="mt-2 text-[24px] leading-[1.12]"><Hl>{nextTitle}</Hl></h2>
               <StoryImage story={nextStory} caption={false} ratio="aspect-[2/1]" className="mt-4" />
               <p className="mt-3 text-[14.5px] text-mirror-light">{nextStory.st}</p>
-            </Link>
+            </Link>}
             <div className="border-t-2 border-ink pt-3"><LiveWire max={3} /></div>
             <AdSlot format="mpu" slot={0} placement="the Coming up page, right-hand column" />
           </div>
