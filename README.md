@@ -419,6 +419,12 @@ a heat map of Africa or the world with requests or readers per country; load by 
 the busiest hour; where readers arrive from; the most opened pages; what gets clicked; and what
 readers search for, with a mark where a search found nothing.
 
+- **Click anything for the detail.** A country (on the map or in the table), a page, an arrival
+  site, a click, a search, a bar on the load chart, or a kind of request opens a panel with that
+  slice's totals, when in the day it happens, what it breaks down into, and every request with its
+  time, newest first (`GET /admin/engagement/detail`). Rows inside the panel drill further.
+  Requests are never tied to a person: the daily reader code is used only for counting and is
+  not sent to the dashboard.
 - **What is recorded** (`src/lib/track.ts` → `POST /events`): the page path with nothing after `?`;
   on the first page of a visit, the *host name* of the site the reader came from (or `utm_source`);
   a short label for clicks on links leaving the site, offers, promotions and story actions (add

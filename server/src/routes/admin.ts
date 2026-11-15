@@ -150,6 +150,57 @@ export async function adminRoutes(app: FastifyInstance) {
       return { days, totals: num(now), previous: num(before), series: hours.map(num), pages: pages.map(num), referrers: referrers.map(num), clicks: clicks.map(num), searches: searches.map(num), countries: countries.map(num), busiestHour: busiest ? num(busiest) : null, unknownCountry: Number(unknown?.n ?? 0) }
     })
 
+    /**
+     * One slice of engagement in detail: everything measured for one country, page, arrival
+     * site, click label, search or stretch of time. Returns its totals, when it was busy, what
+     * it breaks down into, and the requests themselves with their times, newest first.
+     * Requests are never tied to a person: the daily reader code is used for counting only
+     * and is not sent to the dashboard.
+     */
+    admin.get('/engagement/detail', async (req, reply) => {
+      const p = z
+        .object({
+          days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d)).default(7),
+          by: z.enum(['country', 'page', 'ref', 'click', 'search', 'time', 'type']),
+          value: z.string().max(300),
+          offset: z.coerce.number().int().min(0).max(100000).default(0),
+        })
+        .safeParse(req.query)
+      if (!p.success) return reply.code(400).send({ error: 'Bad request.' })
+      const { days, by, value, offset } = p.data
+      const args: unknown[] = [days]
+      const add = (v: unknown) => `$${args.push(v)}`
+      let where = 'at > now() - make_interval(days => $1)'
+      if (by === 'country') where += value === 'none' ? ' AND country IS NULL' : ` AND country = ${add(value.toUpperCase())}`
+      if (by === 'page') where += ` AND path = ${add(value)} AND type IN ('page', 'view')`
+      if (by === 'ref') where += ` AND ref = ${add(value)}`
+      if (by === 'click') where += ` AND type = 'click' AND label = ${add(value)}`
+      if (by === 'search') where += ` AND type = 'search' AND lower(label) = ${add(value.toLowerCase())}`
+      if (by === 'type') where += ` AND type = ${add(value)}`
+      if (by === 'time') {
+        // An hour ("2026-11-15T14:00") or a day ("2026-11-15"), as the chart labels them (UTC).
+        const hour = /^\d{4}-\d{2}-\d{2}T\d{2}:00$/.test(value)
+        if (!hour && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return reply.code(400).send({ error: 'Bad request.' })
+        where += ` AND at >= ${add(value)}::timestamp AND at < ${add(value)}::timestamp + interval '${hour ? '1 hour' : '1 day'}'`
+      }
+      const num = (r: any) => Object.fromEntries(Object.entries(r ?? {}).map(([k, v]) => [k, typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v]))
+      const top = (col: string, extra = '') => q(`SELECT ${col} AS key, count(*) AS n FROM events WHERE ${where} AND ${col} IS NOT NULL ${extra} GROUP BY 1 ORDER BY n DESC LIMIT 8`, args)
+      const [summary, hours, types, pages, countries, refs, langs, labels, events] = await Promise.all([
+        one(`SELECT count(*) AS requests, count(DISTINCT visitor) AS readers, count(*) FILTER (WHERE type = 'page') AS pages, count(*) FILTER (WHERE type = 'view') AS views, count(*) FILTER (WHERE type = 'click') AS clicks, count(*) FILTER (WHERE type = 'search') AS searches, min(at) AS first, max(at) AS last FROM events WHERE ${where}`, args),
+        // When in the day it happens (UTC), whatever the period: 24 bars.
+        q(`SELECT h AS hour, count(x.at) AS n FROM generate_series(0, 23) h LEFT JOIN (SELECT at FROM events WHERE ${where}) x ON extract(hour FROM x.at)::int = h GROUP BY h ORDER BY h`, args),
+        top('type'),
+        top('path'),
+        top('country'),
+        top('ref'),
+        top('lang'),
+        q(`SELECT type, label AS key, count(*) AS n FROM events WHERE ${where} AND label IS NOT NULL AND type IN ('click', 'search') GROUP BY 1, 2 ORDER BY n DESC LIMIT 8`, args),
+        // The offset is this query's own parameter: the others share `args` and must not see it.
+        q(`SELECT at, type, path, label, ref, value, country, lang FROM events WHERE ${where} ORDER BY at DESC, id DESC LIMIT 60 OFFSET $${args.length + 1}`, [...args, offset]),
+      ])
+      return { days, by, value, summary: num(summary), hours: hours.map(num), types: types.map(num), pages: pages.map(num), countries: countries.map(num), referrers: refs.map(num), languages: langs.map(num), labels: labels.map(num), events, offset, more: offset + events.length < Number((summary as any)?.requests ?? 0) }
+    })
+
     /* ---------- Trending on the web: the engine's state and its switches ---------- */
     admin.get('/web-trends', async () => engineStatus())
 

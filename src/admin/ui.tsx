@@ -233,13 +233,14 @@ export function DayBars({ data, label }: { data: { day: string; value: number }[
 }
 
 /** Ranked horizontal bars: label, one-hue bar, value. */
-export function RankBars({ rows, unit, empty = 'Nothing to show yet.' }: { rows: { key: string; label: string; value: number }[]; unit: string; empty?: string }) {
+export function RankBars({ rows, unit, empty = 'Nothing to show yet.', onPick }: { rows: { key: string; label: string; value: number }[]; unit: string; empty?: string; /** Makes each row a button, for opening its detail */ onPick?: (key: string) => void }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   if (!rows.length) return <p className="text-[14px] text-muted">{empty}</p>
   return (
     <ol className="grid grid-cols-[minmax(0,1fr)] gap-3">
       {rows.map((r, i) => (
-        <li key={r.key} className="min-w-0" title={`${r.label}: ${r.value} ${unit}`}>
+        <li key={r.key} className="relative min-w-0" title={`${r.label}: ${r.value} ${unit}`}>
+          {onPick && <button type="button" onClick={() => onPick(r.key)} aria-label={`${r.label}: ${r.value} ${unit}. Open the detail.`} className="peer absolute -inset-x-2 -inset-y-1.5 z-[1] rounded-sm transition-colors hover:bg-ink/[0.05] focus-visible:bg-ink/[0.05]" />}
           <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
             <span className="min-w-0 truncate"><span className="mr-2 font-mono text-[11px] text-muted">{i + 1}</span>{r.label}</span>
             <span className="flex-none font-semibold tabular-nums">{r.value.toLocaleString('en-GB')}</span>

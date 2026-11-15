@@ -3,11 +3,12 @@
  * search for, how busy each hour or day was, and a heat map of where requests come from.
  * Every number covers only readers who allowed measurement.
  */
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { AFRICA_SHAPES, AFRICA_VIEW, MapShape, WORLD_SHAPES, WORLD_VIEW } from './maps.generated'
-import { Empty, Kpi, Notice, Panel, RankBars, Segmented } from './ui'
+import { Btn, Empty, Kpi, Notice, Panel, Pill, RankBars, Segmented } from './ui'
 
 type Totals = { pages: number; readers: number; clicks: number; searches: number; referred: number }
 type CountryRow = { code: string; requests: number; pages: number; readers: number }
@@ -30,6 +31,164 @@ const PERIOD = { 1: '24 hours', 7: '7 days', 30: '30 days' } as const
 /** "+12% on the 7 days before", in words rather than arrows. */
 const change = (now: number, before: number, days: 1 | 7 | 30) => (before === 0 ? (now === 0 ? `No activity in ${PERIOD[days]}` : `New in these ${PERIOD[days]}`) : `${now >= before ? '+' : '−'}${Math.abs(Math.round(((now - before) / before) * 100))}% on the ${PERIOD[days]} before`)
 
+/* ---------- Detail: one country, page, site, click, search or stretch of time ---------- */
+
+export type Pick = { by: 'country' | 'page' | 'ref' | 'click' | 'search' | 'time' | 'type'; value: string; title: string }
+type Event = { at: string; type: 'page' | 'view' | 'click' | 'search'; path: string | null; label: string | null; ref: string | null; value: number | null; country: string | null; lang: string | null }
+type Detail = {
+  summary: { requests: number; readers: number; pages: number; views: number; clicks: number; searches: number; first: string | null; last: string | null }
+  hours: { hour: number; n: number }[]
+  types: { key: string; n: number }[]
+  pages: { key: string; n: number }[]
+  countries: { key: string; n: number }[]
+  referrers: { key: string; n: number }[]
+  languages: { key: string; n: number }[]
+  labels: { key: string; n: number; type: 'click' | 'search' }[]
+  events: Event[]
+  more: boolean
+}
+
+const TYPE: Record<Event['type'], [string, 'ink' | 'neutral' | 'signal' | 'warn']> = { page: ['Page', 'neutral'], view: ['Story', 'ink'], click: ['Click', 'signal'], search: ['Search', 'warn'] }
+const KIND: Record<Pick['by'], string> = { country: 'Country', page: 'Page', ref: 'Arrived from', click: 'Click', search: 'Search', time: 'Time', type: 'Kind of request' }
+const stamp = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+/** What one request was, in a sentence. */
+const describe = (e: Event) => (e.type === 'search' ? `Searched “${e.label}”${e.value === 0 ? ', nothing found' : e.value != null ? `, ${e.value} results` : ''}` : e.type === 'click' ? clickName(e.label ?? '') : e.path === '/' ? 'Front page' : e.path ?? '')
+
+function DetailModal({ pick, days, onClose, onPick }: { pick: Pick; days: Data['days']; onClose: () => void; onPick: (p: Pick) => void }) {
+  const [detail, setDetail] = useState<Detail | null>(null)
+  const [events, setEvents] = useState<Event[]>([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const panel = useRef<HTMLDivElement>(null)
+  const url = (offset: number) => `/admin/engagement/detail?days=${days}&by=${pick.by}&value=${encodeURIComponent(pick.value)}&offset=${offset}`
+
+  useEffect(() => {
+    setDetail(null)
+    setEvents([])
+    setError('')
+    api<Detail>(url(0)).then((d) => { setDetail(d); setEvents(d.events) }).catch((e: ApiError) => setError(e.message))
+    panel.current?.focus()
+    panel.current?.scrollTo(0, 0)
+  }, [pick.by, pick.value, days])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    const before = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = before
+    }
+  }, [])
+  const more = () => {
+    setLoading(true)
+    api<Detail>(url(events.length)).then((d) => { setEvents((e) => [...e, ...d.events]); setDetail((x) => (x ? { ...x, more: d.more } : x)) }).catch(() => {}).finally(() => setLoading(false))
+  }
+
+  const s = detail?.summary
+  const peak = detail ? detail.hours.reduce((a, b) => (b.n > a.n ? b : a), detail.hours[0]) : null
+  const max = Math.max(1, ...(detail?.hours.map((h) => h.n) ?? [1]))
+  // Requests grouped under the day they happened, so the times read as a timeline.
+  const grouped = events.reduce<[string, Event[]][]>((acc, e) => {
+    const d = day(e.at)
+    if (acc.at(-1)?.[0] === d) acc.at(-1)![1].push(e)
+    else acc.push([d, [e]])
+    return acc
+  }, [])
+  const side: [string, Pick['by'], { key: string; n: number }[], (k: string) => string][] = detail
+    ? ([
+        ['Pages', 'page', pick.by === 'page' ? [] : detail.pages, (k: string) => (k === '/' ? 'Front page' : k)],
+        ['Countries', 'country', pick.by === 'country' ? [] : detail.countries, countryName],
+        ['Arrived from', 'ref', pick.by === 'ref' ? [] : detail.referrers, (k: string) => k],
+        ['Clicks and searches', 'click', pick.by === 'click' || pick.by === 'search' ? [] : detail.labels, (k: string) => (detail.labels.find((l) => l.key === k)?.type === 'search' ? `Searched “${k}”` : clickName(k))],
+      ] as [string, Pick['by'], { key: string; n: number }[], (k: string) => string][]).filter(([, , rows]) => rows.length > 0)
+    : []
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-end justify-center bg-ink/60 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${KIND[pick.by]}: ${pick.title}`} className="scroll-quiet flex max-h-[92dvh] w-full max-w-[920px] flex-col overflow-y-auto overscroll-contain rounded-t-2xl bg-paper outline-none sm:max-h-[88dvh] sm:rounded-none">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-rule bg-ink px-5 py-4 text-white sm:px-7">
+          <div className="min-w-0">
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">{KIND[pick.by]} · last {PERIOD[days]}</p>
+            <h2 className="mt-0.5 break-words text-[24px] font-extrabold leading-tight tracking-[-0.03em] sm:text-[28px]">{pick.title}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1.5 flex size-10 flex-none items-center justify-center rounded-full text-mirror-light hover:bg-white/10 hover:text-white"><X className="size-5" /></button>
+        </div>
+
+        <div className="grid gap-6 px-5 py-5 sm:px-7 sm:py-6">
+          {error && <Notice kind="error">{error}</Notice>}
+          {!detail && !error && <div className="shimmer h-[360px] bg-paper-2" />}
+          {detail && s && (
+            <>
+              <dl className="grid grid-cols-2 gap-px bg-rule sm:grid-cols-4">
+                {([['Requests', s.requests], ['Readers', s.readers], ['Pages and stories', s.pages + s.views], ['Clicks and searches', s.clicks + s.searches]] as [string, number][]).map(([k, v]) => (
+                  <div key={k} className="bg-white px-4 py-3"><dt className="text-[12px] text-muted">{k}</dt><dd className="text-[26px] font-extrabold leading-tight tracking-[-0.03em] tabular-nums">{fmt(v)}</dd></div>
+                ))}
+              </dl>
+              {s.requests === 0 ? <Empty title="Nothing measured here in this period." /> : (
+                <>
+                  <p className="-mt-2 text-[13.5px] text-muted">First request <b className="text-ink">{s.first ? stamp(s.first) : ''}</b>, most recent <b className="text-ink">{s.last ? stamp(s.last) : ''}</b>. Times are in your own time zone.</p>
+
+                  <section>
+                    <h3 className="mb-2 text-[15px] font-semibold">When in the day <span className="font-normal text-muted">(UTC, all {PERIOD[days]} together)</span></h3>
+                    <div className="flex h-[92px] items-end gap-[2px] bg-white px-3 pt-3" role="img" aria-label={`Requests by hour of the day. Busiest: ${String(peak?.hour ?? 0).padStart(2, '0')}:00 with ${fmt(peak?.n ?? 0)}.`}>
+                      {detail.hours.map((h) => (
+                        <div key={h.hour} className="group relative flex h-full min-w-0 flex-1 items-end">
+                          <div className={`w-full rounded-t-[2px] ${h === peak && h.n > 0 ? 'bg-signal' : 'bg-ink/70 group-hover:bg-ink'}`} style={{ height: `${h.n === 0 ? 1 : Math.max(4, (h.n / max) * 100)}%` }} />
+                          <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap bg-ink px-2 py-1 text-[11.5px] tabular-nums text-white group-hover:block">{String(h.hour).padStart(2, '0')}:00 · {fmt(h.n)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between bg-white px-3 pb-2 pt-1 text-[11px] tabular-nums text-muted"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+                  </section>
+
+                  {side.length > 0 && (
+                    <section className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+                      {side.map(([title, by, rows, name]) => (
+                        <div key={title} className="min-w-0">
+                          <h3 className="mb-2.5 border-t-2 border-ink pt-2 text-[15px] font-semibold">{title}</h3>
+                          <RankBars rows={rows.map((r) => ({ key: r.key, label: name(r.key), value: r.n }))} unit="requests" onPick={(k) => onPick({ by: by === 'click' && detail.labels.find((l) => l.key === k)?.type === 'search' ? 'search' : by, value: k, title: name(k) })} />
+                        </div>
+                      ))}
+                    </section>
+                  )}
+
+                  <section>
+                    <h3 className="mb-1 text-[15px] font-semibold">Every request <span className="font-normal text-muted">newest first, {fmt(events.length)} of {fmt(s.requests)}</span></h3>
+                    {grouped.map(([d, list]) => (
+                      <div key={d}>
+                        <p className="sticky top-[76px] z-[5] bg-paper py-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted sm:top-[84px]">{d}</p>
+                        <ol className="bg-white">
+                          {list.map((e, i) => (
+                            <li key={e.at + i} className="grid grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-3 border-b border-rule px-3 py-2 sm:grid-cols-[84px_64px_minmax(0,1fr)_auto]">
+                              <time dateTime={e.at} className="font-mono text-[12.5px] tabular-nums text-ink">{clock(e.at)}</time>
+                              <span className="hidden sm:block"><Pill tone={TYPE[e.type][1]}>{TYPE[e.type][0]}</Pill></span>
+                              <span className="min-w-0">
+                                <span className="block break-words text-[14px] font-semibold leading-snug"><span className="mr-1.5 font-normal text-muted sm:hidden">{TYPE[e.type][0]}:</span>{describe(e)}</span>
+                                {(e.type === 'click' || e.type === 'search') && e.path && <span className="block truncate text-[12px] text-muted">on {e.path === '/' ? 'the front page' : e.path}</span>}
+                                {e.ref && <span className="block truncate text-[12px] text-muted">arrived from {e.ref}</span>}
+                              </span>
+                              <span className="col-start-2 text-[12px] text-muted sm:col-start-auto sm:text-right">{e.country ? countryName(e.country) : 'No country'}{e.lang && e.lang !== 'en' ? ` · ${e.lang}` : ''}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    ))}
+                    {detail.more && <div className="mt-3"><Btn tone="line" disabled={loading} onClick={more}>{loading ? 'Loading…' : 'Show 60 more'}</Btn></div>}
+                    <p className="mt-3 text-[12.5px] text-muted">Each line is one measured request. No reader is identified: there is no IP address, and requests are not linked to one another.</p>
+                  </section>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ---------- Heat map ---------- */
 
 /** One hue, light to dark: more requests, darker. Countries with nothing are a neutral grey. */
@@ -39,7 +198,7 @@ const AFRICAN = new Set(AFRICA_SHAPES.map((s) => s[0]))
 const NAMES = new Map([...WORLD_SHAPES, ...AFRICA_SHAPES].map((s) => [s[0], s[1]]))
 export const countryName = (code: string) => NAMES.get(code) ?? code
 
-function HeatMap({ rows, metric }: { rows: CountryRow[]; metric: 'requests' | 'readers' }) {
+function HeatMap({ rows, metric, onPick }: { rows: CountryRow[]; metric: 'requests' | 'readers'; onPick: (p: Pick) => void }) {
   const [view, setView] = useState<'africa' | 'world'>('africa')
   const [hover, setHover] = useState<{ code: string; x: number; y: number } | null>(null)
   const by = useMemo(() => new Map(rows.map((r) => [r.code, r])), [rows])
@@ -84,10 +243,8 @@ function HeatMap({ rows, metric }: { rows: CountryRow[]; metric: 'requests' | 'r
                     const box = e.currentTarget.ownerSVGElement!.parentElement!.getBoundingClientRect()
                     setHover({ code, x: e.clientX - box.left, y: e.clientY - box.top })
                   }}
-                  onClick={(e) => {
-                    const box = e.currentTarget.ownerSVGElement!.parentElement!.getBoundingClientRect()
-                    setHover({ code, x: e.clientX - box.left, y: e.clientY - box.top })
-                  }}
+                  onClick={() => row && onPick({ by: 'country', value: code, title: countryName(code) })}
+                  className={row ? 'cursor-pointer' : undefined}
                 />
               )
             })}
@@ -108,7 +265,7 @@ function HeatMap({ rows, metric }: { rows: CountryRow[]; metric: 'requests' | 'r
             </div>
           )}
         </div>
-        <p className="mt-2 text-[12px] text-muted">Darker means more {unit}. Steps are logarithmic. Hover or tap a country for its figures. Outlines: Natural Earth.</p>
+        <p className="mt-2 text-[12px] text-muted">Darker means more {unit}. Steps are logarithmic. Hover for a country’s figures; click it, or its row, for every request and its time. Outlines: Natural Earth.</p>
       </div>
 
       <div className="min-w-0">
@@ -127,7 +284,7 @@ function HeatMap({ rows, metric }: { rows: CountryRow[]; metric: 'requests' | 'r
             </thead>
             <tbody>
               {ranked.map((r) => (
-                <tr key={r.code} className={`border-b border-rule ${hover?.code === r.code ? 'bg-paper' : ''}`} onMouseEnter={() => setHover(null)}>
+                <tr key={r.code} tabIndex={0} role="button" aria-label={`${countryName(r.code)}: open the detail`} onClick={() => onPick({ by: 'country', value: r.code, title: countryName(r.code) })} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick({ by: 'country', value: r.code, title: countryName(r.code) }))} className={`cursor-pointer border-b border-rule transition-colors hover:bg-paper focus-visible:bg-paper ${hover?.code === r.code ? 'bg-paper' : ''}`} onMouseEnter={() => setHover(null)}>
                   <td className="py-2">
                     <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 flex-none border border-ink/15" style={{ background: RAMP[step(r[metric])] }} /><span className="truncate font-semibold">{countryName(r.code)}</span></span>
                   </td>
@@ -146,7 +303,7 @@ function HeatMap({ rows, metric }: { rows: CountryRow[]; metric: 'requests' | 'r
 
 /* ---------- Load over time ---------- */
 
-function LoadBars({ series, days }: { series: Data['series']; days: Data['days'] }) {
+function LoadBars({ series, days, onPick }: { series: Data['series']; days: Data['days']; onPick: (p: Pick) => void }) {
   const max = Math.max(1, ...series.map((s) => s.n))
   const peak = series.reduce((a, b) => (b.n > a.n ? b : a), series[0])
   const label = (t: string) => (days === 1 ? `${t.slice(11, 13)}:00` : new Date(`${t}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))
@@ -154,10 +311,10 @@ function LoadBars({ series, days }: { series: Data['series']; days: Data['days']
     <div>
       <div className="flex h-[150px] items-end gap-[2px]" role="img" aria-label={`Requests per ${days === 1 ? 'hour' : 'day'}. Highest: ${fmt(peak?.n ?? 0)} at ${peak ? label(peak.t) : 'none'}.`}>
         {series.map((s) => (
-          <div key={s.t} className="group relative flex h-full min-w-0 flex-1 items-end">
+          <button key={s.t} type="button" disabled={s.n === 0} onClick={() => onPick({ by: 'time', value: s.t, title: days === 1 ? `${label(s.t)} to ${String((Number(s.t.slice(11, 13)) + 1) % 24).padStart(2, '0')}:00 UTC` : label(s.t) })} aria-label={`${label(s.t)}: ${fmt(s.n)} requests. Open the detail.`} className="group relative flex h-full min-w-0 flex-1 items-end enabled:cursor-pointer">
             <div className={`w-full rounded-t-[3px] transition-colors ${s === peak && s.n > 0 ? 'bg-signal' : 'bg-ink/75 group-hover:bg-ink'}`} style={{ height: `${s.n === 0 ? 1 : Math.max(3, (s.n / max) * 100)}%` }} />
             <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap bg-ink px-2 py-1 text-[11.5px] tabular-nums text-white group-hover:block">{label(s.t)}: {fmt(s.n)}</span>
-          </div>
+          </button>
         ))}
       </div>
       <div className="mt-1.5 flex justify-between border-t border-ink/20 pt-1 text-[11.5px] tabular-nums text-muted">
@@ -191,6 +348,7 @@ export function Engagement() {
   const [metric, setMetric] = useState<'requests' | 'readers'>('requests')
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState('')
+  const [pick, setPick] = useState<Pick | null>(null)
   useEffect(() => {
     let live = true
     const load = () => api<Data>(`/admin/engagement?days=${days}`).then((d) => live && (setData(d), setError(''))).catch((e: ApiError) => live && setError(e.message))
@@ -232,29 +390,30 @@ export function Engagement() {
             kicker={all ? `${Math.round((africa / all) * 100)}% from Africa · ${d.countries.length} ${d.countries.length === 1 ? 'country' : 'countries'}` : 'Heat map'}
             action={<Segmented label="Measure" value={metric} onChange={setMetric} options={[['requests', 'Requests'], ['readers', 'Readers']]} />}
           >
-            <HeatMap rows={d.countries} metric={metric} />
-            {d.unknownCountry > 0 && <p className="mt-3 border-t border-rule pt-3 text-[12.5px] text-muted">{fmt(d.unknownCountry)} more {d.unknownCountry === 1 ? 'request has' : 'requests have'} no country (international edition, or the country could not be told).</p>}
+            <HeatMap rows={d.countries} metric={metric} onPick={setPick} />
+            {d.unknownCountry > 0 && <p className="mt-3 border-t border-rule pt-3 text-[12.5px] text-muted">{fmt(d.unknownCountry)} more {d.unknownCountry === 1 ? 'request has' : 'requests have'} no country (international edition, or the country could not be told). <button type="button" onClick={() => setPick({ by: 'country', value: 'none', title: 'No country' })} className="font-semibold text-ink underline decoration-signal decoration-2 underline-offset-[3px]">See them</button></p>}
           </Panel>
 
           <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
             <Panel title={d.days === 1 ? 'Load, hour by hour' : 'Load, day by day'} kicker={d.busiestHour ? `Busiest hour of the day: ${String(d.busiestHour.hour).padStart(2, '0')}:00 to ${String((d.busiestHour.hour + 1) % 24).padStart(2, '0')}:00 UTC` : 'Requests'}>
-              <LoadBars series={d.series} days={d.days} />
+              <LoadBars series={d.series} days={d.days} onPick={setPick} />
               <p className="mt-3 text-[12.5px] text-muted">Every measured request: pages, story views, clicks and searches. The busiest hour is where to expect congestion.</p>
             </Panel>
             <Panel title="Where readers arrive from" kicker={`${fmt(d.totals.referred)} of ${fmt(d.totals.pages)} pages came from another site`}>
-              <RankBars rows={d.referrers.map((r) => ({ key: r.ref, label: r.ref, value: r.visits }))} unit="visits" empty="No visits from other sites yet. Direct visits and visits from apps that hide the sender are not listed." />
+              <RankBars rows={d.referrers.map((r) => ({ key: r.ref, label: r.ref, value: r.visits }))} unit="visits" onPick={(k) => setPick({ by: 'ref', value: k, title: k })} empty="No visits from other sites yet. Direct visits and visits from apps that hide the sender are not listed." />
             </Panel>
             <Panel title="Most opened pages" kicker="By page views">
-              <RankBars rows={d.pages.map((p) => ({ key: p.path, label: p.path === '/' ? 'Front page' : p.path, value: p.views }))} unit="views" empty="No pages opened yet." />
+              <RankBars rows={d.pages.map((p) => ({ key: p.path, label: p.path === '/' ? 'Front page' : p.path, value: p.views }))} unit="views" onPick={(k) => setPick({ by: 'page', value: k, title: k === '/' ? 'Front page' : k })} empty="No pages opened yet." />
             </Panel>
             <Panel title="What gets clicked" kicker="Links out, offers, promotions and story actions">
-              <RankBars rows={d.clicks.map((c) => ({ key: c.label, label: clickName(c.label), value: c.n }))} unit="clicks" empty="No clicks counted yet." />
+              <RankBars rows={d.clicks.map((c) => ({ key: c.label, label: clickName(c.label), value: c.n }))} unit="clicks" onPick={(k) => setPick({ by: 'click', value: k, title: clickName(k) })} empty="No clicks counted yet." />
             </Panel>
             <Panel title="What readers search for" kicker="Their words, most frequent first" className="xl:col-span-2" flush>
               {d.searches.length === 0 ? <Empty title="No searches yet.">When readers use search, their words appear here, with a note when nothing was found.</Empty> : (
                 <ul className="grid sm:grid-cols-2">
                   {d.searches.map((s) => (
-                    <li key={s.q} className="flex items-center justify-between gap-3 border-t border-rule px-4 py-2.5 sm:px-5">
+                    <li key={s.q} className="relative flex items-center justify-between gap-3 border-t border-rule px-4 py-2.5 transition-colors hover:bg-paper sm:px-5">
+                      <button type="button" onClick={() => setPick({ by: 'search', value: s.q, title: `“${s.q}”` })} aria-label={`“${s.q}”: open the detail`} className="absolute inset-0" />
                       <span className="min-w-0 truncate text-[14.5px] font-semibold">“{s.q}”</span>
                       <span className="flex flex-none items-center gap-2 text-[12.5px] tabular-nums text-muted">
                         {s.empty > 0 && <span className="bg-signal/15 px-1.5 py-0.5 font-semibold text-ink">{s.empty === s.n ? 'Nothing found' : `${s.empty} found nothing`}</span>}
@@ -267,8 +426,13 @@ export function Engagement() {
               <p className="border-t border-rule px-4 py-3 text-[12.5px] text-muted sm:px-5">“Nothing found” marks subjects readers want and the site does not cover yet.</p>
             </Panel>
           </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-4 text-[13.5px]">
+            <span className="text-muted">Every request, by kind:</span>
+            {([['page', 'Pages'], ['view', 'Story views'], ['click', 'Clicks'], ['search', 'Searches']] as const).map(([k, name]) => <Btn key={k} size="sm" tone="line" onClick={() => setPick({ by: 'type', value: k, title: name })}>{name}</Btn>)}
+          </div>
         </>
       )}
+      {pick && d && <DetailModal pick={pick} days={d.days} onClose={() => setPick(null)} onPick={setPick} />}
     </div>
   )
 }
