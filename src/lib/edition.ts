@@ -3,7 +3,8 @@
  *
  * Order of trust:
  *  1. The reader's own choice (the edition picker), stored in this browser.
- *  2. A geo lookup, if one is configured (see below).
+ *  2. A location lookup: our own API (GET /api/v1/geo), which knows the country when a CDN or
+ *     proxy in front of the site supplies it, then an optional geo endpoint (see below).
  *  3. The device's time zone (or, only if the device reports none, the region of its language).
  *  4. The international edition.
  *
@@ -16,6 +17,7 @@
 import { useEffect } from 'react'
 
 import { COUNTRIES, Country, TIMEZONE_COUNTRY, getCountry } from '@/data/countries'
+import { api, apiOnline } from '@/lib/api'
 import { useStoredValue } from '@/lib/store'
 
 const known = (code: string | null | undefined) => (code && COUNTRIES.some((c) => c.code === code.toUpperCase()) ? code.toUpperCase() : null)
@@ -52,12 +54,16 @@ export function useEdition(): [Country, (code: string) => void, { chosen: boolea
   const [choice, setChoice] = useStoredValue('ma-country', '')
   const [looked, setLooked] = useStoredValue('ma-country-geo', '')
 
-  // Optional IP lookup, once per visit, only when an endpoint is configured.
+  // Location lookup, once per visit, unless the reader has chosen an edition themselves. Our own
+  // API answers first (it knows the country when a CDN or proxy in front of the site supplies
+  // it); a separate geo endpoint is used only if one is configured.
   useEffect(() => {
-    if (!GEO_ENDPOINT || lookedUp || choice) return
+    if (lookedUp || choice) return
+    if (!apiOnline && !GEO_ENDPOINT) return
     lookedUp = true
-    fetch(GEO_ENDPOINT)
-      .then((r) => r.json())
+    const ask = apiOnline ? api<{ country: string | null }>('/geo').catch(() => ({ country: null })) : Promise.resolve({ country: null })
+    ask
+      .then((own) => (own.country || !GEO_ENDPOINT ? own : fetch(GEO_ENDPOINT).then((r) => r.json())))
       .then((d) => {
         const code = known(d.country_code ?? d.country ?? d.countryCode)
         if (code) setLooked(code)

@@ -34,6 +34,8 @@ export type Story = {
   tags: string
   /** Topic within the section */
   sub: string
+  /** ISO codes of the countries this story is about. Drives country and region trends. */
+  countries?: string[]
 }
 
 export type VizSpec =

@@ -15,14 +15,16 @@ import Fastify from 'fastify'
 import { ZodError } from 'zod'
 
 import { syncStaff } from './auth'
+import { redisClient, startCache } from './cache'
 import { checkConfig, config } from './config'
 import { migrate, pool, q, waitForDb } from './db'
 import { adminRoutes } from './routes/admin'
 import { publicRoutes } from './routes/public'
-import { seed } from './seed'
+import { backfillCountries, seed } from './seed'
 import { listenForWire } from './wire'
 
 checkConfig()
+startCache()
 
 const app = Fastify({
   logger: { level: config.logLevel, redact: ['req.headers.cookie', 'req.headers.authorization'] },
@@ -33,7 +35,8 @@ const app = Fastify({
 
 await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } }, crossOriginResourcePolicy: { policy: 'same-site' } })
 await app.register(cookie)
-await app.register(rateLimit, { max: config.rateLimitPerMinute, timeWindow: '1 minute' })
+// With Redis the limits are shared by every API instance. If Redis is down, requests are let through.
+await app.register(rateLimit, { max: config.rateLimitPerMinute, timeWindow: '1 minute', redis: redisClient() ?? undefined, skipOnError: true, nameSpace: 'ma:rate:' })
 
 // Never leak stack traces or SQL to a caller.
 app.setErrorHandler((err: any, req, reply) => {
@@ -54,6 +57,7 @@ await app.register(async (api) => {
 await waitForDb()
 await migrate()
 if (config.seedContent) await seed()
+await backfillCountries()
 await syncStaff()
 await listenForWire()
 

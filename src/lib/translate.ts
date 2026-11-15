@@ -80,6 +80,7 @@ export const currentLanguage = () => localeFromPath().lang
  * translator has rewritten the page, and a fresh load is the only clean way to change or undo that.
  */
 export function setLanguage(code: string) {
+  rememberLanguage(code)
   location.assign(localePath(code) + location.search + location.hash)
 }
 
@@ -185,15 +186,50 @@ export const READ_IN: Record<string, string> = {
 }
 
 /**
- * A language to offer this reader: the first language their browser asks for that we support
- * and that is not English, otherwise the first language suggested for their country.
+ * The language to offer this reader. Where they are comes first: the main language of their
+ * country edition. If that edition has none other than English, the first language their
+ * browser asks for that we support.
  */
 export function suggestedLanguage(countryLangs: string[]): Language | null {
-  const wanted = (navigator.languages ?? [navigator.language]).map((l) => l.toLowerCase())
-  if (wanted[0]?.startsWith('en')) return countryLangs[0] ? getLanguage(countryLangs[0]) : null
-  for (const w of wanted) {
+  if (countryLangs[0]) return getLanguage(countryLangs[0])
+  for (const w of (navigator.languages ?? [navigator.language]).map((l) => l.toLowerCase())) {
+    if (w.startsWith('en')) continue
     const match = LANGUAGES.find((l) => l.code !== 'en' && (l.code.toLowerCase() === w || l.code.toLowerCase().split('-')[0] === w.split('-')[0]))
     if (match) return match
   }
-  return countryLangs[0] ? getLanguage(countryLangs[0]) : null
+  return null
+}
+
+/* ---------- The reader's standing choice ---------- */
+
+const PREF_KEY = 'ma-lang-pref'
+
+/** The language the reader last chose ('en' included), or '' if they have never been asked. */
+export function preferredLanguage(): string {
+  try {
+    return localStorage.getItem(PREF_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function rememberLanguage(code: string) {
+  try {
+    localStorage.setItem(PREF_KEY, code)
+  } catch {
+    /* storage blocked: the choice lasts for this page only */
+  }
+}
+
+/**
+ * If the reader has chosen another language and allowed translation, an address with no
+ * language in it (a shared link, a bookmark, the bare domain) is sent on to their language.
+ * Returns true if it is redirecting, so the caller can stop.
+ */
+export function redirectToPreferredLanguage(translationAllowed: boolean): boolean {
+  const pref = preferredLanguage()
+  if (!translationAllowed || !pref || pref === 'en' || localeFromPath().base !== '') return false
+  if (!LANGUAGES.some((l) => l.code === pref)) return false
+  location.replace(localePath(pref) + location.search + location.hash)
+  return true
 }

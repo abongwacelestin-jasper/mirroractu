@@ -32,7 +32,10 @@ export function HousePromo({ enabled }: { enabled: boolean }) {
   const rested = Date.now() - Number(lastSeen) > REST_MS
   useEffect(() => {
     if (!enabled || !rested) return
-    const t = window.setTimeout(() => setOpen(true), SHOW_AFTER_MS)
+    const t = window.setTimeout(() => {
+      // Never on top of another question (the language offer): skip this turn.
+      if (!document.querySelector('[data-popup]')) setOpen(true)
+    }, SHOW_AFTER_MS)
     return () => window.clearTimeout(t)
   }, [enabled, rested])
 

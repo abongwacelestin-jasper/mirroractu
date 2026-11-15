@@ -4,10 +4,13 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
 import { CATEGORIES, CategoryId, EDITION_DATE, storyPath } from '@/data'
+import { COUNTRIES } from '@/data/geo'
 import { storyMedia } from '@/data/media'
 import { ApiError, api } from '@/lib/api'
 import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
-import { PasswordInput, useAdmin } from './AdminApp'
+import { OverviewData, PasswordInput, useAdmin } from './AdminApp'
+
+type OverviewTrend = OverviewData['trends'][number]
 import { Avatar, Btn, DayBars, Empty, Field, Kpi, Notice, Panel, Pill, RankBars, Segmented, ago, inputClass, when } from './ui'
 
 /** Load something from the API, with a way to load it again. */
@@ -36,10 +39,19 @@ const greeting = () => {
 export function Overview() {
   const { user, overview: data, corrections } = useAdmin()
   const [metric, setMetric] = useState<'views' | 'readers'>('views')
+  // Trends as readers in one country see them. Empty means the global list.
+  const [place, setPlace] = useState('')
+  const [placed, setPlaced] = useState<{ levels: { level: string; name: string; measuredReaders: number; trends: OverviewTrend[] }[] } | null>(null)
+  useEffect(() => {
+    setPlaced(null)
+    if (place) api<typeof placed>(`/admin/trends?country=${place}`).then(setPlaced).catch(() => {})
+  }, [place])
   if (!data) return <OverviewSkeleton />
   const c = data.counts
   const noReaders = data.days.every((d) => d.views === 0)
   const open = corrections.filter((x) => x.status === 'open' || x.status === 'checking').length
+  const shownLevel = place ? placed?.levels[0] ?? null : null
+  const trends: OverviewTrend[] = shownLevel ? shownLevel.trends : data.trends
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
@@ -85,7 +97,21 @@ export function Overview() {
         </Panel>
       </div>
 
-      <Panel kicker="What the site’s Trends page shows" title="Today’s trends" flush>
+      <Panel
+        kicker={shownLevel ? `As readers in ${shownLevel.name} see it · ${shownLevel.measuredReaders} measured readers, 24h` : 'What every reader sees under Global'}
+        title="Today’s trends"
+        flush
+        action={
+          <label className="flex items-center gap-2 text-[13px] text-muted">
+            <span className="hidden sm:inline">Seen from</span>
+            <select value={place} onChange={(e) => setPlace(e.target.value)} className="border border-ink/25 bg-white px-2.5 py-1.5 text-[13.5px] font-semibold text-ink">
+              <option value="">Global</option>
+              {data.activeCountries.length > 0 && <optgroup label="Countries with readers">{data.activeCountries.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.readers})</option>)}</optgroup>}
+              <optgroup label="All editions">{COUNTRIES.filter((c) => c.code !== 'INT').map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</optgroup>
+            </select>
+          </label>
+        }
+      >
         {/* Wide screens: a table. Phones: the same rows as cards. */}
         <div className="hidden md:block">
           <table className="w-full border-collapse text-[14px] tabular-nums">
@@ -96,10 +122,10 @@ export function Overview() {
               </tr>
             </thead>
             <tbody>
-              {data.trends.map((t) => (
+              {trends.map((t) => (
                 <tr key={t.id} className="border-b border-rule last:border-b-0 hover:bg-paper/60">
                   <td className="py-2.5 pl-5"><span className="flex items-center gap-1.5 text-[17px] font-extrabold">{t.rank}<Moved n={t.moved} /></span></td>
-                  <td className="py-2.5 font-semibold">{t.label}{t.activeNow && <Pill tone="signal" className="ml-2">Active now</Pill>}</td>
+                  <td className="py-2.5 font-semibold">{t.label}{t.activeNow && <Pill tone="signal" className="ml-2">Active now</Pill>}{shownLevel && t.basis === 'local' && <Pill className="ml-2">About {shownLevel.name}</Pill>}{shownLevel && t.basis === 'read-here' && <Pill className="ml-2">Read there</Pill>}</td>
                   <td className="py-2.5 text-right">{t.storyIds.length}</td><td className="py-2.5 text-right">{t.wireCount}</td><td className="py-2.5 text-right">{t.readers}</td>
                   <td className="py-2.5 pr-5 text-right font-bold">{t.score}</td>
                 </tr>
@@ -108,7 +134,7 @@ export function Overview() {
           </table>
         </div>
         <ol className="md:hidden">
-          {data.trends.map((t) => (
+          {trends.map((t) => (
             <li key={t.id} className="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-rule px-4 py-3">
               <span className="text-[22px] font-extrabold leading-none tabular-nums">{t.rank}</span>
               <span className="min-w-0">
@@ -119,7 +145,7 @@ export function Overview() {
             </li>
           ))}
         </ol>
-        <p className="border-t border-rule px-4 py-3 text-[12.5px] text-muted sm:px-5">Score: one point per story, half a point per wire update in 24 hours, plus readership on a log scale.</p>
+        <p className="border-t border-rule px-4 py-3 text-[12.5px] text-muted sm:px-5">Score: stories filed, half a point per wire update in 24 hours, and readership on a log scale. For a country, stories about it and readers in it count for more.</p>
       </Panel>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2">
@@ -150,6 +176,7 @@ function OverviewSkeleton() {
 type AdminStory = {
   id: string; slug: string; h: string; st: string; what: string; why: string; ok: string[]; un: string[]; src: [string, string, string?][]
   cats: CategoryId[]; tier: 'low' | 'medium' | 'high'; d: string; desk: string; sub: string; tags: string; published: boolean; version: number; updatedAt: string
+  countries?: string[]
 }
 const TIER_TONE = { high: 'ink', medium: 'neutral', low: 'neutral' } as const
 
@@ -241,11 +268,11 @@ export function Stories() {
   )
 }
 
-const BLANK = { h: '', st: '', what: '', why: '', ok: '', un: '', cats: ['world'] as CategoryId[], tier: 'medium' as AdminStory['tier'], d: new Date().toISOString().slice(0, 10), desk: 'World desk', sub: '', tags: '', published: false, src: [['Report', '', ''], ['', '', ''], ['', '', '']] as string[][] }
+const BLANK = { h: '', st: '', what: '', why: '', ok: '', un: '', cats: ['world'] as CategoryId[], tier: 'medium' as AdminStory['tier'], d: new Date().toISOString().slice(0, 10), desk: 'World desk', sub: '', tags: '', published: false, countries: [] as string[], src: [['Report', '', ''], ['', '', ''], ['', '', '']] as string[][] }
 
 function StoryForm({ story, isAdmin, onDone }: { story: AdminStory | null; isAdmin: boolean; onDone: () => void }) {
   const [f, setF] = useState(() =>
-    story ? { ...story, ok: story.ok.join('\n'), un: story.un.join('\n'), src: [0, 1, 2].map((i) => [story.src[i]?.[0] ?? '', story.src[i]?.[1] ?? '', story.src[i]?.[2] ?? '']) } : BLANK
+    story ? { ...story, countries: story.countries ?? [], ok: story.ok.join('\n'), un: story.un.join('\n'), src: [0, 1, 2].map((i) => [story.src[i]?.[0] ?? '', story.src[i]?.[1] ?? '', story.src[i]?.[2] ?? '']) } : BLANK
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
@@ -259,7 +286,7 @@ function StoryForm({ story, isAdmin, onDone }: { story: AdminStory | null; isAdm
     setErrors({})
     setMessage('')
     const body = {
-      h: f.h, st: f.st, what: f.what, why: f.why, ok: lines(f.ok), un: lines(f.un), cats: f.cats, tier: f.tier, d: f.d, desk: f.desk, sub: f.sub, tags: f.tags, published: f.published,
+      h: f.h, st: f.st, what: f.what, why: f.why, ok: lines(f.ok), un: lines(f.un), cats: f.cats, tier: f.tier, d: f.d, desk: f.desk, sub: f.sub, tags: f.tags, published: f.published, countries: f.countries,
       src: f.src.filter((s) => s[0].trim() && s[1].trim()).map((s) => (s[2].trim() ? [s[0], s[1], s[2].trim()] : [s[0], s[1]])),
     }
     try {
@@ -339,6 +366,20 @@ function StoryForm({ story, isAdmin, onDone }: { story: AdminStory | null; isAdm
               {f.tier === 'high' && <Notice>High risk: a named editor must sign off against primary sources before this is published.</Notice>}
               <Field label="Desk line" hint="Shown on the story, e.g. Climate desk." error={err('desk')}><input value={f.desk} onChange={(e) => set({ desk: e.target.value })} className={inputClass} /></Field>
               <Field label="Topic" hint="Groups stories within a section, e.g. Elections." error={err('sub')}><input value={f.sub} onChange={(e) => set({ sub: e.target.value })} className={inputClass} /></Field>
+              <fieldset>
+                <legend className="mb-1.5 text-[13px] font-semibold">Countries this is about <span className="font-normal text-muted">({f.countries.length} chosen)</span></legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {COUNTRIES.filter((c) => c.code !== 'INT').map((c) => {
+                    const on = f.countries.includes(c.code)
+                    return (
+                      <button key={c.code} type="button" aria-pressed={on} title={c.name} onClick={() => set({ countries: on ? f.countries.filter((x) => x !== c.code) : [...f.countries, c.code] })} className="rounded-full border border-ink/25 px-2.5 py-1 text-[12.5px] transition-colors aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-white">
+                        {c.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="mt-1.5 text-[12px] text-muted">Puts the story in that country’s trends and its region’s. Leave empty for a story that is global.</p>
+              </fieldset>
               <Field label="Search words" hint="Extra words readers might search for."><input value={f.tags} onChange={(e) => set({ tags: e.target.value })} className={inputClass} /></Field>
             </div>
           </Panel>

@@ -19,7 +19,7 @@ import { Masthead } from '@/components/layout/Masthead'
 import { TabBar } from '@/components/layout/TabBar'
 import { ConsentModal } from '@/components/overlays/ConsentModal'
 import { CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
-import { EditionModal, LanguageSuggestion, TranslationBar } from '@/components/overlays/EditionModal'
+import { EditionModal, LanguageOffer, TranslationBar } from '@/components/overlays/EditionModal'
 import { AppStatusBars, InstallPrompt } from '@/components/overlays/AppPrompts'
 import { HousePromo } from '@/components/overlays/HousePromo'
 import { TrendsModal } from '@/components/overlays/TrendsModal'
@@ -151,7 +151,6 @@ export function Layout() {
           <AppStatusBars />
           <LiveBar />
           <TranslationBar />
-          <LanguageSuggestion enabled={popupsAllowed} />
           <SearchDialog
             open={search.open}
             query={search.query}
@@ -201,6 +200,7 @@ export function Layout() {
           <AnchorAd enabled={popupsAllowed && !isAdFree(pathname)} />
           <LiveAlert enabled={popupsAllowed} />
           <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
+          <LanguageOffer enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <InstallPrompt enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <TabBar />
         </div>

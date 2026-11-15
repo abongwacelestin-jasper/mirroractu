@@ -105,7 +105,7 @@ const LABELS: Record<string, string> = {
   'ma-trends-seen': 'Trends popup last shown',
   'ma-promo-seen': 'MirrorActu promo last shown',
   'ma-alerts-muted': 'Live alerts muted',
-  'ma-lang-offer': 'Language offer answered',
+  'ma-lang-pref': 'Language you chose',
 }
 
 const describe = (value: string) => {

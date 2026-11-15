@@ -33,7 +33,8 @@ export type OverviewData = {
   topStories: { id: string; headline: string; views: number; readers: number }[]
   countries: { key: string; readers: number }[]
   languages: { key: string; readers: number }[]
-  trends: { id: string; label: string; rank: number; moved: number; score: number; readers: number; wireCount: number; activeNow: boolean; storyIds: string[] }[]
+  trends: { id: string; label: string; rank: number; moved: number; score: number; readers: number; wireCount: number; activeNow: boolean; storyIds: string[]; basis?: 'local' | 'read-here' | 'wider' }[]
+  activeCountries: { code: string; name: string; readers: number }[]
 }
 
 type Ctx = { user: User; overview: OverviewData | null; corrections: Correction[]; reload: () => void }

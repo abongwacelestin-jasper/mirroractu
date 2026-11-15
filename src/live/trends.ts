@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { Story, getStory } from '@/data'
+import { getCountry } from '@/data/countries'
 import { TREND_TOPICS, TrendTopic } from '@/data/trends'
 import { api, apiOnline } from '@/lib/api'
+import { useEdition } from '@/lib/edition'
 import { useWire } from './feed'
 
 export type Trend = TrendTopic & {
@@ -14,32 +16,44 @@ export type Trend = TrendTopic & {
   wireCount: number
   /** True if one of the five newest wire updates is on this subject */
   activeNow: boolean
-  /** Readers in the last 24 hours, counted only among those who allowed measurement. Absent offline. */
+  /** Measured readers in this level's area, last 24 hours. Absent offline. */
   readers?: number
+  /** Stories on this subject that are about this level's area */
+  localStories?: number
+  /** Why it is on the list: about this place, read in this place, or big everywhere */
+  basis?: 'local' | 'read-here' | 'wider'
 }
 
-type ApiTrend = TrendTopic & { rank: number; moved: number; wireCount: number; activeNow: boolean; readers: number }
+/** One rung of the ladder: the reader's country, their region, or the world. */
+export type TrendLevel = { level: 'country' | 'region' | 'global'; name: string; code?: string; measuredReaders: number; trends: Trend[] }
+
+type ApiTrend = Omit<Trend, 'stories'>
+type ApiLevel = Omit<TrendLevel, 'trends'> & { trends: ApiTrend[] }
 
 const REFRESH_MS = 45000
-let cache: ApiTrend[] | null = null
+const cache = new Map<string, ApiLevel[]>()
 
 /**
- * Today's trends, ranked. With the API online the ranking comes from GET /api/v1/trends:
- * stories filed, wire activity and real readership over the last 24 hours, refreshed every
- * 45 seconds. Offline, it falls back to stories filed plus wire activity, worked out here.
+ * Today's trends as a ladder from the reader outwards: their country, their region, the world.
+ * With the API online each level is ranked by stories about that place, wire activity and
+ * measured readership there (GET /api/v1/trends?country=RW), refreshed every 45 seconds.
+ * Offline there is one level, global, worked out here from stories and the wire.
  */
-export function useTrends(): Trend[] {
+export function useTrendLevels(): TrendLevel[] {
+  const [country] = useEdition()
   const { items } = useWire({ max: 40 })
-  const [remote, setRemote] = useState<ApiTrend[] | null>(cache)
+  const code = country.code === 'INT' ? '' : country.code
+  const [remote, setRemote] = useState<ApiLevel[] | null>(cache.get(code) ?? null)
 
   useEffect(() => {
     if (!apiOnline) return
     let alive = true
+    setRemote(cache.get(code) ?? null)
     const load = () =>
-      api<{ trends: ApiTrend[] }>('/trends')
+      api<{ levels: ApiLevel[] }>(`/trends${code ? `?country=${code}` : ''}`)
         .then((d) => {
-          cache = d.trends
-          if (alive) setRemote(d.trends)
+          cache.set(code, d.levels)
+          if (alive) setRemote(d.levels)
         })
         .catch(() => {})
     load()
@@ -48,14 +62,14 @@ export function useTrends(): Trend[] {
       alive = false
       window.clearInterval(t)
     }
-  }, [])
+  }, [code])
 
   return useMemo(() => {
     const withStories = <T extends TrendTopic>(t: T) => ({ ...t, stories: t.storyIds.map(getStory).filter(Boolean) as Story[] })
-    if (remote) return remote.map(withStories).filter((t) => t.stories.length > 0)
+    if (remote) return remote.map((l) => ({ ...l, trends: l.trends.map(withStories).filter((t) => t.stories.length > 0) }))
 
     const base = [...TREND_TOPICS].sort((a, b) => b.storyIds.length - a.storyIds.length).map((t) => t.id)
-    return TREND_TOPICS.map((t) => {
+    const trends = TREND_TOPICS.map((t) => {
       const wire = items.filter((w) => w.storyId && t.storyIds.includes(w.storyId))
       const newest = items.slice(0, 5).some((w) => w.storyId && t.storyIds.includes(w.storyId))
       return { t, wireCount: wire.length, activeNow: newest, score: t.storyIds.length + wire.length * 0.5 + (newest ? 0.75 : 0) }
@@ -63,5 +77,20 @@ export function useTrends(): Trend[] {
       .sort((a, b) => b.score - a.score)
       .map(({ t, wireCount, activeNow }, i) => ({ ...withStories(t), rank: i + 1, moved: base.indexOf(t.id) - i, wireCount, activeNow }))
       .filter((t) => t.stories.length > 0)
+    return [{ level: 'global' as const, name: 'Global', measuredReaders: 0, trends }]
   }, [items, remote])
+}
+
+/** The global ranking alone. */
+export function useTrends(): Trend[] {
+  const levels = useTrendLevels()
+  return levels[levels.length - 1].trends
+}
+
+/** "In Rwanda", "Across Africa", "Around the world". */
+export function levelTitle(l: TrendLevel) {
+  if (l.level === 'global') return 'Around the world'
+  if (l.level === 'region') return l.name === 'Americas' ? 'Across the Americas' : l.name === 'Middle East' ? 'Across the Middle East' : `Across ${l.name}`
+  const the = ['US', 'GB', 'AE'].includes(l.code ?? '') ? 'the ' : ''
+  return `In ${the}${getCountry(l.code).name}`
 }

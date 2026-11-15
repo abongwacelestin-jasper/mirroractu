@@ -7,16 +7,19 @@ import { Modal } from '@/components/overlays/Modal'
 import { ButtonLink } from '@/components/ui'
 import { EDITION_DATE, storyPath } from '@/data'
 import { TREND_VIDEOS, formatSeconds } from '@/data/trends'
-import { useTrends } from '@/live/trends'
+import { levelTitle, useTrendLevels } from '@/live/trends'
 
 /** Centred popup with today's top five trends and the leading video. */
 export function TrendsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const trends = useTrends().slice(0, 5)
+  const levels = useTrendLevels()
+  const level = levels[0]
+  const trends = level.trends.slice(0, 5)
   const video = TREND_VIDEOS[0]
   return (
     <Modal open={open} onClose={onClose} title="Today’s trends" center className="sm:max-w-[560px]">
       <p className="flex items-center gap-2 text-[12.5px] font-semibold text-signal"><TrendingUp className="size-4" /> {EDITION_DATE}</p>
-      <h2 className="mt-1 pr-8 text-[32px] font-extrabold leading-none tracking-[-0.035em]">Today’s trends</h2>
+      <h2 className="mt-1 pr-8 text-[32px] font-extrabold leading-none tracking-[-0.035em]">{level.level === 'global' ? 'Today’s trends' : `Trending ${levelTitle(level).replace(/^In /, 'in ').replace(/^Across /, 'across ')}`}</h2>
+      {levels.length > 1 && <p className="mt-1.5 text-[13.5px] text-muted">Your country first. The full page widens it to {levels.slice(1).map((l) => (l.level === 'global' ? 'the world' : l.name)).join(' and ')}.</p>}
       <ol className="mt-4">
         {trends.map((t, i) => (
           <motion.li

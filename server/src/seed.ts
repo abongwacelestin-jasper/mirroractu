@@ -4,6 +4,7 @@
  * It never overwrites: once there is content, the dashboard is the only way it changes.
  */
 import * as snapshot from '../../src/data/snapshot'
+import { STORY_COUNTRIES } from '../../src/data/geo'
 import { TREND_TOPICS } from '../../src/data/trends'
 import { one, pool, q } from './db'
 import { slugify } from './slug'
@@ -36,7 +37,7 @@ export async function seed() {
       if (used.has(slug)) slug = `${slug}-${s.id.replace(/^s-/, '')}`
       used.add(slug)
       // The topic within a section lives in a separate table in the snapshot; fold it into the story.
-      const story = { ...s, sub: s.sub ?? (snapshot as any).SUB?.[s.id] ?? '' }
+      const story = { ...s, sub: s.sub ?? (snapshot as any).SUB?.[s.id] ?? '', countries: STORY_COUNTRIES[s.id] ?? [] }
       await client.query('INSERT INTO stories (id, slug, data, cats, tier, story_date) VALUES ($1, $2, $3, $4, $5, $6)', [s.id, slug, JSON.stringify(story), s.cats, s.tier, s.d])
     }
     const content: Record<string, unknown> = {
@@ -68,4 +69,17 @@ export async function seed() {
 /** The topic of each story within its section ("COP31", "Elections"…), where the snapshot lists it separately. */
 export async function storyCount() {
   return Number((await q<{ n: string }>('SELECT count(*) AS n FROM stories'))[0].n)
+}
+
+/**
+ * Stories loaded before country tags existed get them now, from the snapshot's list. It only
+ * fills in stories that have none, so anything an editor has set is left alone.
+ */
+export async function backfillCountries() {
+  let n = 0
+  for (const [id, countries] of Object.entries(STORY_COUNTRIES)) {
+    const r = await q("UPDATE stories SET data = jsonb_set(data, '{countries}', $2::jsonb) WHERE id = $1 AND NOT (data ? 'countries') RETURNING id", [id, JSON.stringify(countries)])
+    n += r.length
+  }
+  if (n) console.log(`Tagged ${n} stories with the countries they are about`)
 }

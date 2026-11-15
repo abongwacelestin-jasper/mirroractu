@@ -13,6 +13,10 @@
  *                         in production). Sign-in and dashboard requests without it get "not found",
  *                         so they cannot be reached through the public site or any other route.
  *
+ * Caching
+ *   REDIS_URL             Redis connection string. Optional: without it each API instance caches in
+ *                         its own memory. With it, the cache and rate limits are shared.
+ *
  * Staff accounts, created automatically on every start (see auth.ts → syncStaff)
  *   ADMIN_EMAILS          administrators, comma separated: "Ada Obi <ada@x.com>, sam@x.com"
  *   EDITOR_EMAILS         editors, same format
@@ -67,6 +71,7 @@ export const config = {
   production,
   siteOrigins: (env.SITE_ORIGIN ?? 'http://localhost:5173,http://localhost:8080').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   analyticsSalt: env.ANALYTICS_SALT ?? '',
+  redisUrl: env.REDIS_URL ?? '',
   adminOrigins: (env.ADMIN_ORIGIN ?? 'http://localhost:8081,http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   adminGatewayKey: env.ADMIN_GATEWAY_KEY ?? '',
 

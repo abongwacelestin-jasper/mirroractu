@@ -28,7 +28,7 @@ const KEY = 'ma-consent'
 export const PURPOSES: { id: Purpose; name: string; about: string }[] = [
   { id: 'measurement', name: 'Readership measurement', about: 'Counts which stories are read so editors know what is useful. No profile of you is built and your IP address is not stored.' },
   { id: 'ads', name: 'Advertising by Google', about: 'Lets Google choose and measure adverts, including video adverts. If you deny it you still see adverts, but only our own, with no tracking.' },
-  { id: 'translation', name: 'Translation by Google', about: 'Needed to read MirrorActu in another language. The page text is sent to Google Translate.' },
+  { id: 'translation', name: 'Translation by Google', about: 'Needed to read MirrorActu in another language, including the one we offer for your country. The page text is sent to Google Translate.' },
 ]
 
 function parse(raw: string): Consent | null {

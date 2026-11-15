@@ -7,6 +7,8 @@ import { z } from 'zod'
 
 import { sameOrigin, visitorHash } from '../auth'
 import { one, q } from '../db'
+import { cacheBackend, cached } from '../cache'
+import { countryFromHeaders, trendLevels } from '../trends'
 import { onWire, recentWire } from '../wire'
 
 const email = z.string().trim().toLowerCase().email().max(254)
@@ -20,41 +22,23 @@ export async function content() {
   return Object.fromEntries(rows.map((r) => [r.key, r.data]))
 }
 
-/** Today's trends: coverage, plus wire activity and readership in the last 24 hours. */
-export async function trends() {
-  const topics = ((await one<{ data: any[] }>("SELECT data FROM content WHERE key = 'trendTopics'"))?.data ?? []) as { id: string; storyIds: string[] }[]
-  const published = new Set((await q<{ id: string }>('SELECT id FROM stories WHERE published')).map((r) => r.id))
-  const wire = await q<{ story_id: string; n: string; last: Date }>("SELECT story_id, count(*) AS n, max(at) AS last FROM wire_items WHERE at > now() - interval '24 hours' AND story_id IS NOT NULL GROUP BY story_id")
-  const views = await q<{ story_id: string; n: string }>("SELECT story_id, count(DISTINCT visitor) AS n FROM events WHERE type = 'view' AND at > now() - interval '24 hours' AND story_id IS NOT NULL GROUP BY story_id")
-  const latest = (await q<{ story_id: string }>('SELECT story_id FROM wire_items ORDER BY at DESC LIMIT 5')).map((r) => r.story_id)
-  const wireBy = new Map(wire.map((w) => [w.story_id, Number(w.n)]))
-  const viewsBy = new Map(views.map((v) => [v.story_id, Number(v.n)]))
-
-  const base = [...topics].sort((a, b) => b.storyIds.length - a.storyIds.length).map((t) => t.id)
-  return topics
-    .map((t) => {
-      const ids = t.storyIds.filter((id) => published.has(id))
-      const wireCount = ids.reduce((n, id) => n + (wireBy.get(id) ?? 0), 0)
-      const readers = ids.reduce((n, id) => n + (viewsBy.get(id) ?? 0), 0)
-      const activeNow = ids.some((id) => latest.includes(id))
-      // One point per story, half a point per wire update, and readership on a log scale so one
-      // very popular story cannot swamp everything else.
-      const score = ids.length + wireCount * 0.5 + 2 * Math.log2(1 + readers) + (activeNow ? 0.75 : 0)
-      return { ...t, storyIds: ids, wireCount, readers, activeNow, score: Math.round(score * 100) / 100 }
-    })
-    .filter((t) => t.storyIds.length > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((t, i) => ({ ...t, rank: i + 1, moved: base.indexOf(t.id) - i }))
-}
-
 export async function publicRoutes(app: FastifyInstance) {
-  app.get('/health', async () => ({ ok: true, at: new Date().toISOString() }))
+  app.get('/health', async () => ({ ok: true, at: new Date().toISOString(), cache: cacheBackend() }))
+
+  /** Where the reader is, when a proxy or CDN in front of the site says so. Null otherwise. */
+  app.get('/geo', async (req, reply) => {
+    reply.header('Cache-Control', 'private, max-age=300')
+    return { country: countryFromHeaders(req.headers) }
+  })
 
   /** One request that gives the site its whole edition. */
   app.get('/bootstrap', async (_req, reply) => {
-    const stories = (await q('SELECT id, slug, data, version FROM stories WHERE published ORDER BY story_date DESC, id')).map(storyOut)
     reply.header('Cache-Control', 'public, max-age=5')
-    return { generatedAt: new Date().toISOString(), stories, ...(await content()) }
+    // Cached for half a minute, and dropped at once when an editor changes anything.
+    return cached('content', 'bootstrap', 30, async () => {
+      const stories = (await q('SELECT id, slug, data, version FROM stories WHERE published ORDER BY story_date DESC, id')).map(storyOut)
+      return { generatedAt: new Date().toISOString(), stories, ...(await content()) }
+    })
   })
 
   app.get('/stories', async (req) => {
@@ -74,9 +58,15 @@ export async function publicRoutes(app: FastifyInstance) {
     return row ? storyOut(row) : reply.code(404).send({ error: 'No story at this address.' })
   })
 
-  app.get('/trends', async (_req, reply) => {
-    reply.header('Cache-Control', 'public, max-age=20')
-    return { generatedAt: new Date().toISOString(), trends: await trends() }
+  /**
+   * Today's trends. With ?country=RW (or a country supplied by the proxy) the answer has three
+   * levels: the country, its region, and global. `trends` is always the global list.
+   */
+  app.get('/trends', async (req, reply) => {
+    const { country } = z.object({ country: z.string().max(3).optional() }).parse(req.query)
+    const result = await trendLevels(country ?? countryFromHeaders(req.headers) ?? undefined)
+    reply.header('Cache-Control', 'public, max-age=20').header('Vary', 'CF-IPCountry, X-Country-Code')
+    return { generatedAt: new Date().toISOString(), country: result.country, levels: result.levels, trends: result.levels[result.levels.length - 1].trends }
   })
 
   app.get('/wire', async (req) => {
@@ -136,7 +126,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const body = z.object({ type: z.enum(['view']), storyId: z.string().max(80).optional(), path: z.string().max(300), country: z.string().max(3).optional(), lang: z.string().max(8).optional() }).safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Bad event.' })
     const b = body.data
-    await q('INSERT INTO events (type, story_id, path, country, lang, visitor) VALUES ($1, $2, $3, $4, $5, $6)', [b.type, b.storyId ?? null, b.path, b.country ?? null, b.lang ?? null, visitorHash(req)])
+    await q('INSERT INTO events (type, story_id, path, country, lang, visitor) VALUES ($1, $2, $3, $4, $5, $6)', [b.type, b.storyId ?? null, b.path, countryFromHeaders(req.headers) ?? (b.country && b.country !== 'INT' ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req)])
     return reply.code(204).send()
   })
 }

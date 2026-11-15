@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Globe, Languages } from 'lucide-react'
 import { twMerge } from 'tailwind-merge'
 
@@ -7,8 +8,8 @@ import { useToast } from '@/components/overlays/Toast'
 import { COUNTRIES, storiesNear } from '@/data/countries'
 import { useEdition } from '@/lib/edition'
 import { useConsent } from '@/lib/consent'
-import { useStoredValue } from '@/lib/store'
-import { LANGUAGES, READ_IN, currentLanguage, getLanguage, localePath, setLanguage, suggestedLanguage } from '@/lib/translate'
+import { useSiteActions } from '@/lib/actions'
+import { LANGUAGES, READ_IN, currentLanguage, getLanguage, localePath, preferredLanguage, rememberLanguage, setLanguage, suggestedLanguage } from '@/lib/translate'
 
 /** Choose the country edition and the reading language. */
 export function EditionModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -121,36 +122,82 @@ export function TranslationBar() {
 }
 
 /**
- * Offers the reader's own language once, in that language where we can. It only offers:
- * nothing is translated, and nothing goes to Google, unless they say yes.
+ * Asks, once, whether the reader would like the language of the place they are in. It is a
+ * question, not a switch: nothing is translated and nothing is sent to Google unless they say
+ * yes, and the card says what yes means. Their answer is remembered either way.
  */
-export function LanguageSuggestion({ enabled }: { enabled: boolean }) {
+export function LanguageOffer({ enabled }: { enabled: boolean }) {
   const [country] = useEdition()
   const { grant } = useConsent()
-  const [dismissed, setDismissed] = useStoredValue('ma-lang-offer', '')
-  if (!enabled || dismissed || currentLanguage() !== 'en') return null
+  const { openEdition } = useSiteActions()
+  const [open, setOpen] = useState(false)
+  const reduce = useReducedMotion()
   const language = suggestedLanguage(country.langs)
+  const eligible = enabled && !!language && currentLanguage() === 'en' && preferredLanguage() === ''
+
+  useEffect(() => {
+    if (!eligible) return
+    const t = window.setTimeout(() => setOpen(true), 5000)
+    return () => window.clearTimeout(t)
+  }, [eligible])
+
   if (!language) return null
+  const answer = (code: string) => {
+    setOpen(false)
+    rememberLanguage(code)
+  }
+
   return (
-    <div className="border-b border-rule bg-paper text-[13.5px]" translate="no">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-1.5 px-[18px] py-2 sm:px-6 lg:px-10">
-        <span className="flex items-center gap-2 font-semibold"><Languages className="size-4" /> {READ_IN[language.code] ?? `Read MirrorActu in ${language.native}?`}</span>
-        <span className="text-muted">Machine translated by Google Translate.</span>
-        <span className="ml-auto flex gap-4">
+    <AnimatePresence>
+      {open && (
+        <motion.aside
+          role="dialog"
+          aria-label={`Read MirrorActu in ${language.name}?`}
+          data-popup
+          initial={{ y: '110%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '110%' }}
+          transition={{ duration: reduce ? 0 : 0.4, ease: [0.23, 1, 0.32, 1] }}
+          translate="no"
+          className="fixed inset-x-0 bottom-[calc(60px+env(safe-area-inset-bottom))] z-[57] border-t-[3px] border-signal bg-white p-5 text-ink shadow-[0_-24px_60px_-20px_rgba(14,20,36,.55)] sm:inset-x-auto sm:left-5 sm:w-[420px] sm:border sm:border-t-[3px] sm:border-rule sm:border-t-signal lg:bottom-5"
+        >
+          <p className="flex items-center gap-2 text-[12.5px] font-semibold text-muted">
+            <Languages className="size-4" /> {country.code === 'INT' ? 'Your language' : `You are reading from ${country.name}`}
+          </p>
+          <h2 className="mt-2 font-serif text-[30px] font-normal leading-[1.05]">{READ_IN[language.code] ?? `Read MirrorActu in ${language.native}?`}</h2>
+          {READ_IN[language.code] && <p className="mt-1 text-[14.5px] text-muted">Read MirrorActu in {language.name}?</p>}
+          <ul className="mt-3 grid gap-1.5 text-[13.5px] text-muted">
+            <li className="border-t border-rule pt-1.5">It is machine translation by Google Translate. Names and figures can come out wrong.</li>
+            <li className="border-t border-rule pt-1.5">Saying yes sends the text of the pages you open to Google.</li>
+            <li className="border-t border-rule pt-1.5">You can go back to English at any time, from the language menu.</li>
+          </ul>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                grant('translation')
+                setLanguage(language.code)
+              }}
+              className="flex-1 rounded-full border-2 border-ink bg-ink px-4 py-2.5 text-[14.5px] font-semibold text-white transition-colors hover:bg-ink-2"
+            >
+              Yes, in {language.native}
+            </button>
+            <button type="button" onClick={() => answer('en')} className="flex-1 rounded-full border-2 border-ink px-4 py-2.5 text-[14.5px] font-semibold transition-colors hover:bg-paper">
+              Keep English
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
-              setDismissed('1')
-              grant('translation')
-              setLanguage(language.code)
+              setOpen(false)
+              openEdition()
             }}
-            className="font-semibold underline decoration-signal decoration-2 underline-offset-4"
+            className="mt-3 text-[13px] font-semibold text-muted underline underline-offset-2 hover:text-ink"
           >
-            {language.native}
+            Another language, or not in {country.code === 'INT' ? 'the right place' : country.name}?
           </button>
-          <button type="button" onClick={() => setDismissed('1')} className="text-muted hover:text-ink">No thanks</button>
-        </span>
-      </div>
-    </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
   )
 }

@@ -29,7 +29,7 @@ export function InstallPrompt({ enabled }: { enabled: boolean }) {
     if (!enabled || !offerable || !rested) return
     const t = window.setTimeout(() => {
       // Never on top of our own promo panel: wait for the next chance instead.
-      if (!document.querySelector('[aria-label="From MirrorActu"]')) setOpen(true)
+      if (!document.querySelector('[aria-label="From MirrorActu"], [data-popup]')) setOpen(true)
     }, OFFER_AFTER_MS)
     return () => window.clearTimeout(t)
   }, [enabled, offerable, rested])

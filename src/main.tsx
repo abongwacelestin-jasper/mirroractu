@@ -11,11 +11,18 @@ import { App } from '@/App'
 import { Edition, hydrate } from '@/data'
 import { TrendTopic, hydrateTopics } from '@/data/trends'
 import { api, setApiOnline } from '@/lib/api'
-import { localeFromPath } from '@/lib/translate'
+import { readConsent } from '@/lib/consent'
+import { localeFromPath, redirectToPreferredLanguage } from '@/lib/translate'
 
 // The language is the first part of the address (/fr/trends). The router is mounted on it,
 // so every link inside the site keeps the reader in their language.
 const { base } = import.meta.env.VITE_APP_TARGET === 'admin' ? { base: '' } : localeFromPath()
+
+// A reader who chose another language (and allowed translation) is sent to it from any address
+// that has no language in it. Nothing else runs while the browser moves there.
+if (import.meta.env.VITE_APP_TARGET !== 'admin' && redirectToPreferredLanguage(!!readConsent()?.translation)) {
+  await new Promise(() => {})
+}
 
 // Load today's edition from the API before the first render (the logo splash is showing).
 // If the API does not answer within three seconds, the site starts on its bundled snapshot.

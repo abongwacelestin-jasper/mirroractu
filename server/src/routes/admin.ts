@@ -9,7 +9,8 @@ import { audit, currentUser, endSession, hashPassword, login, requireUser, sameO
 import { one, q } from '../db'
 import { slugify } from '../slug'
 import { addWire } from '../wire'
-import { trends } from './public'
+import { bump } from '../cache'
+import { activeCountries, globalTrends, trendLevels } from '../trends'
 
 const CATS = ['world', 'africa', 'business', 'tech', 'climate', 'health', 'culture', 'sport'] as const
 const line = z.string().trim().min(1).max(600)
@@ -28,6 +29,8 @@ const storyIn = z.object({
   desk: z.string().trim().min(2).max(60),
   sub: z.string().trim().min(2).max(40),
   tags: z.string().trim().max(300).default(''),
+  /** ISO country codes this story is about, e.g. ["RW", "ZA"]. Drives country and region trends. */
+  countries: z.array(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/)).max(12).default([]),
   published: z.boolean().default(true),
 })
 
@@ -101,7 +104,13 @@ export async function adminRoutes(app: FastifyInstance) {
         WHERE e.type = 'view' AND e.at > now() - interval '7 days' GROUP BY e.story_id, s.data ORDER BY readers DESC, views DESC LIMIT 8`)
       const by = (col: 'country' | 'lang') => q(`SELECT coalesce(${col}, 'unknown') AS key, count(DISTINCT visitor) AS readers FROM events WHERE at > now() - interval '7 days' GROUP BY 1 ORDER BY readers DESC LIMIT 8`)
       const num = (r: any) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, /^\d+$/.test(String(v)) ? Number(v) : v]))
-      return { counts: num(counts), days: days.map(num), topStories: top.map(num), countries: (await by('country')).map(num), languages: (await by('lang')).map(num), trends: (await trends()).slice(0, 10) }
+      return { counts: num(counts), days: days.map(num), topStories: top.map(num), countries: (await by('country')).map(num), languages: (await by('lang')).map(num), trends: (await globalTrends()).slice(0, 10), activeCountries: await activeCountries() }
+    })
+
+    /** Trends as readers in one country see them: country, region and global levels. */
+    admin.get('/trends', async (req) => {
+      const { country } = z.object({ country: z.string().max(3).optional() }).parse(req.query)
+      return trendLevels(country)
     })
 
     /* Stories */
@@ -117,6 +126,8 @@ export async function adminRoutes(app: FastifyInstance) {
       if (await one('SELECT 1 FROM stories WHERE slug = $1', [slug])) slug = `${slug}-${Date.now().toString(36)}`
       const id = `s-${slug.split('-').slice(0, 3).join('-')}-${Date.now().toString(36)}`
       await q('INSERT INTO stories (id, slug, data, cats, tier, story_date, published, updated_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [id, slug, JSON.stringify({ ...story, id }), story.cats, story.tier, story.d, published, userOf(req).id])
+      await bump('content')
+      await bump('trends')
       await audit(userOf(req), 'story.created', id, { headline: story.h, published })
       return reply.code(201).send({ id, slug })
     })
@@ -129,6 +140,8 @@ export async function adminRoutes(app: FastifyInstance) {
       // The address (slug) is kept when a headline changes, so links already shared keep working.
       const row = await one('UPDATE stories SET data = $2, cats = $3, tier = $4, story_date = $5, published = $6, version = version + 1, updated_at = now(), updated_by = $7 WHERE id = $1 RETURNING version', [id, JSON.stringify({ ...story, id }), story.cats, story.tier, story.d, published, userOf(req).id])
       if (!row) return reply.code(404).send({ error: 'No such story.' })
+      await bump('content')
+      await bump('trends')
       await audit(userOf(req), 'story.updated', id, { headline: story.h, published, version: row.version })
       return { ok: true, version: row.version }
     })
@@ -137,6 +150,8 @@ export async function adminRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.string().max(120) }).parse(req.params)
       const row = await one("DELETE FROM stories WHERE id = $1 RETURNING data->>'h' AS h", [id])
       if (!row) return reply.code(404).send({ error: 'No such story.' })
+      await bump('content')
+      await bump('trends')
       await audit(userOf(req), 'story.deleted', id, { headline: row.h })
       return { ok: true }
     })
@@ -146,6 +161,7 @@ export async function adminRoutes(app: FastifyInstance) {
       const body = z.object({ desk: z.string().trim().min(2).max(40), cat: z.enum(CATS), text: z.string().trim().min(8).max(300), storyId: z.string().max(120).optional().or(z.literal('')), kind: z.enum(['update', 'confirmed', 'result', 'data']) }).safeParse(req.body)
       if (!body.success) return reply.code(400).send(bad(body.error))
       const item = await addWire({ ...body.data, storyId: body.data.storyId || undefined }, userOf(req).id)
+      await bump('trends')
       await audit(userOf(req), 'wire.posted', String(item.id), { text: item.text })
       return reply.code(201).send({ item })
     })

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { CountUp } from '@/components/ui/CountUp'
-import { ArrowDown, ArrowUp, Minus, Play } from 'lucide-react'
+import { ArrowDown, ArrowUp, Globe, Map, MapPin, Minus, Play } from 'lucide-react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -13,11 +13,18 @@ import { Container, Hl, PageHeader, TextLink } from '@/components/ui'
 import { EDITION_DATE, categoryName, getStory, storyPath } from '@/data'
 import { TREND_VIDEOS, formatSeconds } from '@/data/trends'
 import { useSiteActions } from '@/lib/actions'
-import { Trend, useTrends } from '@/live/trends'
+import { useEdition } from '@/lib/edition'
+import { Trend, TrendLevel, levelTitle, useTrendLevels } from '@/live/trends'
 
 export function TrendsPage() {
-  const trends = useTrends()
+  const levels = useTrendLevels()
+  const [country] = useEdition()
+  const { openEdition } = useSiteActions()
   const { hash } = useLocation()
+  // Start at the nearest level; the reader can widen it to the region or the world.
+  const [picked, setPicked] = useState<TrendLevel['level'] | null>(null)
+  const level = levels.find((l) => l.level === picked) ?? levels[0]
+  const trends = level.trends
   const [top, ...rest] = trends
 
   useEffect(() => {
@@ -28,20 +35,55 @@ export function TrendsPage() {
     <>
       <PageHeader
         title="Trends"
-        intro={`What MirrorActu is following most closely today. ${EDITION_DATE}.`}
+        intro={`What matters where you are, then wider. ${EDITION_DATE}.`}
         aside={
           <div className="max-w-[34ch] border-l-2 border-signal pl-4 text-[14px] text-mirror-light">
             <LiveBadge dark note={false} />
-            <p className="mt-2">Ranked by how many stories we have filed on a subject and how active it is on the wire. It moves through the day.</p>
+            <p className="mt-2">Three lists: your country, your region, the world. Each is ranked by stories about that place, the wire, and what measured readers there open.</p>
           </div>
         }
       />
 
-      <Container className="grid gap-x-10 gap-y-10 pb-12 pt-8 lg:grid-cols-12">
+      {/* The ladder: your country, your region, the world */}
+      <div className="sticky top-[96px] z-[5] border-b border-rule bg-white lg:top-[68px]">
+        <Container className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 py-2.5">
+          <div role="tablist" aria-label="Where" className="no-scrollbar flex min-w-0 gap-2 overflow-x-auto">
+            {levels.map((l) => (
+              <button
+                key={l.level}
+                role="tab"
+                type="button"
+                aria-selected={l.level === level.level}
+                onClick={() => setPicked(l.level)}
+                className="flex flex-none items-center gap-2 whitespace-nowrap rounded-full border border-rule px-4 py-2 text-[14.5px] font-semibold transition-colors duration-150 hover:border-ink aria-selected:border-ink aria-selected:bg-ink aria-selected:text-white"
+              >
+                {l.level === 'country' ? <MapPin className="size-4" /> : l.level === 'region' ? <Map className="size-4" /> : <Globe className="size-4" />}
+                {l.level === 'global' ? 'Global' : l.name}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={openEdition} className="whitespace-nowrap text-[13.5px] font-semibold underline decoration-signal decoration-2 underline-offset-4">
+            {country.code === 'INT' ? 'Choose your country' : `Not in ${country.name}? Change`}
+          </button>
+        </Container>
+      </div>
+
+      <Container className="grid gap-x-10 gap-y-10 pb-12 pt-7 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-8">
-          {top && <TopTrend trend={top} />}
+          <div className="mb-5">
+            <h2 className="text-[30px] font-extrabold tracking-[-0.035em]">{levelTitle(level)}</h2>
+            <p className="mt-1 text-[14.5px] text-muted">
+              {level.level === 'country' && `Led by stories about ${level.name} and what readers there are opening. `}
+              {level.level === 'region' && `Led by stories from ${level.name} and what readers across it are opening. `}
+              {level.level === 'global' && 'Every reader, every desk. '}
+              {level.measuredReaders > 0
+                ? `Based on ${level.measuredReaders} measured ${level.measuredReaders === 1 ? 'reader' : 'readers'} in the last 24 hours, plus our coverage.`
+                : 'No measured readers here yet, so this is ranked by our coverage and the wire.'}
+            </p>
+          </div>
+          {top && <TopTrend key={level.level} trend={top} place={level.level === 'global' ? undefined : level.name} />}
           <ol className="mt-8 border-t-2 border-ink">
-            {rest.map((t) => <TrendRow key={t.id} trend={t} />)}
+            {rest.map((t) => <TrendRow key={`${level.level}-${t.id}`} trend={t} place={level.level === 'global' ? undefined : level.name} />)}
           </ol>
         </div>
         <aside className="min-w-0 lg:col-span-4 lg:border-l lg:border-rule lg:pl-8">
@@ -79,9 +121,11 @@ function Moved({ n }: { n: number }) {
   return <span className="text-muted"><Minus className="size-3.5" /><span className="sr-only">No change</span></span>
 }
 
-function TrendMeta({ trend, dark = false }: { trend: Trend; dark?: boolean }) {
+function TrendMeta({ trend, dark = false, place }: { trend: Trend; dark?: boolean; place?: string }) {
   return (
     <p className={twMerge('flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]', dark ? 'text-mirror' : 'text-muted')}>
+      {place && trend.basis === 'local' && <span className={twMerge('flex items-center gap-1 font-semibold', dark ? 'text-white' : 'text-ink')}><MapPin className="size-3.5 text-signal" />About {place}</span>}
+      {place && trend.basis === 'read-here' && <span className={twMerge('font-semibold', dark ? 'text-white' : 'text-ink')}>Read in {place}</span>}
       <span>{categoryName(trend.cat)}</span>
       <span><CountUp value={trend.stories.length} /> {trend.stories.length > 1 ? 'stories' : 'story'}</span>
       {trend.activeNow && (
@@ -94,7 +138,7 @@ function TrendMeta({ trend, dark = false }: { trend: Trend; dark?: boolean }) {
   )
 }
 
-function TopTrend({ trend }: { trend: Trend }) {
+function TopTrend({ trend, place }: { trend: Trend; place?: string }) {
   const { openSearch } = useSiteActions()
   const lead = trend.stories[0]
   return (
@@ -107,7 +151,7 @@ function TopTrend({ trend }: { trend: Trend }) {
             <Moved n={trend.moved} />
           </p>
           <h2 className="mt-3 text-[34px] font-extrabold leading-none tracking-[-0.035em] sm:text-[42px]">{trend.label}</h2>
-          <div className="mt-2"><TrendMeta trend={trend} dark /></div>
+          <div className="mt-2"><TrendMeta trend={trend} dark place={place} /></div>
           <ul className="mt-4">
             {trend.stories.slice(0, 3).map((s) => (
               <li key={s.id} className="border-t border-rule-dark">
@@ -124,7 +168,7 @@ function TopTrend({ trend }: { trend: Trend }) {
   )
 }
 
-function TrendRow({ trend }: { trend: Trend }) {
+function TrendRow({ trend, place }: { trend: Trend; place?: string }) {
   const { openSearch } = useSiteActions()
   const lead = trend.stories[0]
   return (
@@ -137,7 +181,7 @@ function TrendRow({ trend }: { trend: Trend }) {
         <h2 className="text-[22px] leading-tight sm:text-[26px]">
           <button type="button" onClick={() => openSearch(trend.query)} className="text-left decoration-signal decoration-2 underline-offset-[5px] hover:underline">{trend.label}</button>
         </h2>
-        <div className="mt-1"><TrendMeta trend={trend} /></div>
+        <div className="mt-1"><TrendMeta trend={trend} place={place} /></div>
         <Link to={storyPath(lead.id)} className="group mt-2 block text-[15.5px] leading-snug text-muted"><span className="text-ink"><Hl>{lead.h}</Hl></span></Link>
       </div>
       <Link to={storyPath(lead.id)} className="group block" aria-label={lead.h}><StoryImage story={lead} caption={false} ratio="aspect-[4/3]" /></Link>
