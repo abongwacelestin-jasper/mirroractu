@@ -7,7 +7,7 @@ import { AdTag } from '@/components/ads/AdSlot'
 import { MonoDate, Pill } from '@/components/ui'
 import { CATEGORIES, categoryName, sectionPath, storyDate, storyPath } from '@/data'
 import { storyMedia } from '@/data/media'
-import { offersPath } from '@/data/offers'
+import { offerPath } from '@/data/offers'
 import { TREND_TOPICS, formatSeconds } from '@/data/trends'
 import { DEFAULT_FILTERS, SearchFilters, SearchType, runSearch, searchPath, termsOf } from '@/lib/search'
 import { useStoredValue } from '@/lib/store'
@@ -336,7 +336,7 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
         {show('offers') && results.offers.length > 0 && (
           <Group title="Offers from advertisers" count={results.offers.length} icon={<AdTag className="text-[9px]">Ad</AdTag>}>
             {results.offers.slice(0, cap(2)).map(({ advertiser, offer }) => (
-              <Link key={offer.id} data-result to={`${offersPath(advertiser.category)}#${advertiser.id}`} onClick={opened} className="group grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-rule py-2.5 outline-none focus-visible:bg-paper">
+              <Link key={offer.id} data-result to={offerPath(advertiser, offer)} onClick={opened} className="group grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-rule py-2.5 outline-none focus-visible:bg-paper">
                 <span className="min-w-0">
                   <span className="block text-[15.5px] font-semibold decoration-signal decoration-2 underline-offset-4 group-hover:underline"><Highlight text={offer.title} terms={terms} /></span>
                   <span className="block text-[13px] text-muted">Paid for by {advertiser.name}</span>

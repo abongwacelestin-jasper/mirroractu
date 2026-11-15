@@ -79,6 +79,7 @@ Imports use the `@/` alias for `src/`, e.g. `import { AdSlot } from '@/component
 | `/trends` | Today's trends and video trends. `?v=<video id>#video` opens on a video |
 | `/search` | Search results. The address is the search: `?q=cop31&desk=climate&type=videos&from=2026-11-01&sort=newest&open=1` |
 | `/offers`, `/offers/:category` | Advertiser offers: `flights`, `stays`, `events`, `banking`. Adverts link here |
+| `/offers/:category/:offer` | One offer, e.g. `/offers/flights/kigali-to-nairobi`: photo, details, what is included, enquiry form |
 | `/legal` | Legal and contact status, picture credits at `#credits` |
 
 ## The feed and the reader's edition
@@ -169,6 +170,6 @@ Every slot has a solid "Advertisement" (or "Sponsored") tag, names who paid, and
 Each of these says so on screen:
 
 - **Live feeds**: `src/live/feed.ts` simulates the provider. Replace `connect()` with the real subscription.
-- **Ad server and offers**: advertisers, fares and prices in `src/data/offers.ts` are placeholders. Replace with the ad server and partner feeds.
+- **Ad server and offers**: advertisers, fares, schedules and prices in `src/data/offers.ts` are placeholders (the airports, time zones and places are real). Replace with the ad server and partner feeds.
 - **Email sign-up and corrections form**: validate only; nothing is sent.
 - **Exchange rates, legal pages**: waiting on a provider and legal review.

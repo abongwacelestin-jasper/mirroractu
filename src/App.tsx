@@ -17,6 +17,7 @@ const LivePage = page(() => import('@/pages/LivePage'), 'LivePage')
 const SavedPage = page(() => import('@/pages/SavedPage'), 'SavedPage')
 const StandardsPage = page(() => import('@/pages/StandardsPage'), 'StandardsPage')
 const OffersPage = page(() => import('@/pages/OffersPage'), 'OffersPage')
+const OfferPage = page(() => import('@/pages/OffersPage'), 'OfferPage')
 const TrendsPage = page(() => import('@/pages/TrendsPage'), 'TrendsPage')
 const SearchPage = page(() => import('@/pages/SearchPage'), 'SearchPage')
 const LegalPage = page(() => import('@/pages/LegalPage'), 'LegalPage')
@@ -43,6 +44,7 @@ export function App({ preview = 'live' }: { preview?: PreviewState }) {
           <Route path="legal" element={<LegalPage />} />
           <Route path="offers" element={<OffersPage />} />
           <Route path="offers/:category" element={<OffersPage />} />
+          <Route path="offers/:category/:offerId" element={<OfferPage />} />
           <Route path=":sectionId" element={<SectionPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

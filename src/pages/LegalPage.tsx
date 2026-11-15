@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Container, PageHeader, TextLink } from '@/components/ui'
 import { STORIES, storyPath } from '@/data'
 import { MEDIA } from '@/data/media'
+import { ADVERTISERS, offerPath, offersPath } from '@/data/offers'
 import { useSiteActions } from '@/lib/actions'
 import { SimpleTable } from '@/pages/StandardsPage'
 
@@ -21,7 +22,17 @@ export function LegalPage() {
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' })
   }, [hash])
-  const pictures = STORIES.filter((s) => MEDIA[s.id])
+  const pictures = STORIES.filter((s) => MEDIA[s.id]).map((s) => ({ key: s.id, to: storyPath(s.id), label: s.h, m: MEDIA[s.id] }))
+  // Pictures on the advertiser offers pages, without repeating one already listed.
+  const seen = new Set(pictures.map((p) => p.m.src))
+  for (const a of ADVERTISERS) {
+    for (const x of [{ key: a.id, to: offersPath(a.category), label: a.name, m: a.image }, ...a.offers.map((o) => ({ key: o.id, to: offerPath(a, o), label: o.title, m: o.image }))]) {
+      if (!seen.has(x.m.src)) {
+        seen.add(x.m.src)
+        pictures.push(x)
+      }
+    }
+  }
 
   return (
     <>
@@ -48,15 +59,14 @@ export function LegalPage() {
         <Container>
           <h2 className="text-[28px]">Picture credits</h2>
           <p className="mt-2 max-w-[70ch] text-muted">
-            Photographs on MirrorActu are file photos from Wikimedia Commons, used under the licence shown. They illustrate the subject of a story and
-            were not taken at the events reported. Each links to its original, where the full licence terms are given.
+            Photographs on MirrorActu, including those on advertiser offers, are file photos from Wikimedia Commons, used under the licence shown.
+            They illustrate a subject and were not taken at the events reported. Each links to its original, where the full licence terms are given.
           </p>
           <ul className="mt-7 grid gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
-            {pictures.map((s) => {
-              const m = MEDIA[s.id]
+            {pictures.map(({ key, to, label, m }) => {
               return (
-                <li data-reveal key={s.id} className="grid grid-cols-[96px_minmax(0,1fr)] gap-4 border-t border-rule pt-4">
-                  <Link to={storyPath(s.id)} aria-label={s.h}><img src={m.src} alt="" loading="lazy" className="aspect-[3/2] w-full object-cover" /></Link>
+                <li data-reveal key={key} className="grid grid-cols-[96px_minmax(0,1fr)] gap-4 border-t border-rule pt-4">
+                  <Link to={to} aria-label={label}><img src={m.src} alt="" loading="lazy" className="aspect-[3/2] w-full object-cover" /></Link>
                   <div className="text-[13.5px] leading-snug">
                     <p className="font-semibold">{m.alt}</p>
                     <p className="mt-1 text-muted">{m.credit} · {m.licence}</p>

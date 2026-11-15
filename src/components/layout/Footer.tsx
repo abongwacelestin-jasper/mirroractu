@@ -150,7 +150,7 @@ function SignupForm({ formRef }: { formRef: React.RefObject<HTMLFormElement> }) 
   )
 }
 
-export function EmailField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function EmailField({ value, onChange, submitLabel = 'Sign up' }: { value: string; onChange: (v: string) => void; submitLabel?: string }) {
   return (
     <div className="flex max-w-[460px] rounded-full bg-white p-[5px] focus-within:ring-[3px] focus-within:ring-signal">
       <input
@@ -162,7 +162,7 @@ export function EmailField({ value, onChange }: { value: string; onChange: (v: s
         className="min-w-0 flex-1 bg-transparent px-[18px] py-[11px] text-base text-ink outline-none"
       />
       <button type="submit" className="rounded-full border border-signal bg-signal px-5 py-2.5 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-signal-hover">
-        Sign up
+        {submitLabel}
       </button>
     </div>
   )
