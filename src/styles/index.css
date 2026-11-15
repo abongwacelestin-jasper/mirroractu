@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+
+@theme {
+  --color-ink: #0e1424;
+  --color-ink-2: #1a2236;
+  --color-paper: #f4f1ea;
+  --color-paper-2: #e9e4d8;
+  --color-mirror: #aeb8c6;
+  --color-mirror-light: #c9d1dc;
+  --color-signal: #ff5a36;
+  --color-signal-hover: #ff7a5c;
+  --color-dew: #f2b441;
+  --color-muted: #4a5166;
+  --color-faint: #8a93a6;
+  --color-rule: rgb(14 20 36 / 0.13);
+  --color-rule-dark: rgb(174 184 198 / 0.2);
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-white, #fff);
+  }
+  body {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.08;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 3px;
+  }
+  input[type='search']::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+/* Horizontal scan lines, the brand's "still open" texture. Colour comes from currentColor. */
+@utility hatch {
+  background: repeating-linear-gradient(0deg, currentColor 0 2px, transparent 2px 4px);
+}
+@utility hatch-x {
+  background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px);
+}
+/* The dashed mirror axis between Confirmed and Still open. */
+@utility axis-y {
+  background-image: linear-gradient(var(--color-signal) 55%, transparent 0);
+  background-size: 2px 9px;
+}
+@utility axis-x {
+  background-image: linear-gradient(90deg, var(--color-signal) 55%, transparent 0);
+  background-size: 9px 2px;
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+}
