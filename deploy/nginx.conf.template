@@ -1,0 +1,93 @@
+# MirrorActu web server.
+#
+# This is a template: on start-up the nginx image replaces ${PORT} with the PORT environment
+# variable and writes the result to /etc/nginx/conf.d/default.conf. Nothing else is replaced.
+#
+# The site is a single-page app: every address that is not a real file (a story, a section,
+# a language prefix such as /fr/trends) is answered with index.html and the app takes it
+# from there.
+
+# The reader's country, if a proxy or CDN in front of this container supplies it.
+# Cloudflare sends CF-IPCountry; Vercel-style proxies send X-Vercel-IP-Country; or set your
+# own X-Country-Code header on the load balancer. Empty when none is present, and the site
+# then falls back to the device's time zone.
+map $http_cf_ipcountry $country_cf      { default $http_cf_ipcountry; "XX" ""; "T1" ""; }
+map $http_x_vercel_ip_country $country_v { default $http_x_vercel_ip_country; }
+map $http_x_country_code $country_x     { default $http_x_country_code; }
+map "$country_x$country_cf$country_v" $ma_country {
+  default "";
+  "~^(?<cc>[A-Za-z]{2})" $cc;
+}
+
+server {
+  # ${PORT} is filled in when the container starts. Hosts such as Railway choose the port
+  # themselves and pass it in; everywhere else it is 8080.
+  listen ${PORT};
+  listen [::]:${PORT};
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Do not advertise the server version.
+  server_tokens off;
+
+  # ---------- Compression ----------
+  gzip on;
+  gzip_comp_level 6;
+  gzip_min_length 1024;
+  gzip_vary on;
+  gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+  # ---------- Security headers ----------
+  # (No Content-Security-Policy here: the site may load Google Translate, Google adverts and
+  # Google Fonts when a reader allows them. Add one at the CDN once the ad setup is final.)
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), geolocation=(), payment=(), microphone=(self)" always;
+
+  # ---------- Health check ----------
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  # ---------- Built assets ----------
+  # File names contain a content hash, so they can be cached for a year.
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+  }
+
+  # ---------- Photographs and video ----------
+  # Names are stable, so cache for a week. Range requests let video seek.
+  location /media/ {
+    add_header Cache-Control "public, max-age=604800" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+  }
+
+  location = /favicon.svg {
+    add_header Cache-Control "public, max-age=604800" always;
+  }
+
+  # ---------- The app ----------
+  # index.html must never be cached, or readers would keep an old build after a deploy.
+  location / {
+    try_files $uri /index.html;
+  }
+
+  location = /index.html {
+    add_header Cache-Control "no-store" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), geolocation=(), payment=(), microphone=(self)" always;
+
+    # Hand the reader's country to the app (src/lib/edition.ts reads this tag).
+    sub_filter '</head>' '<meta name="ma-country" content="$ma_country"></head>';
+    sub_filter_once on;
+  }
+}

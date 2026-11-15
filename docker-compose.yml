@@ -1,0 +1,38 @@
+# MirrorActu in one command:
+#
+#   docker compose up -d --build      start (or update) the site on http://localhost:8080
+#   docker compose logs -f web        watch the web server
+#   docker compose down               stop it
+#
+# Settings come from a file named .env beside this one (copy deploy/env.example to .env).
+# They are build-time settings: after changing them, run `docker compose up -d --build`.
+
+services:
+  web:
+    build:
+      context: .
+      args:
+        VITE_ADSENSE_CLIENT: ${VITE_ADSENSE_CLIENT:-}
+        VITE_ADSENSE_SLOT_LEADERBOARD: ${VITE_ADSENSE_SLOT_LEADERBOARD:-}
+        VITE_ADSENSE_SLOT_MPU: ${VITE_ADSENSE_SLOT_MPU:-}
+        VITE_ADSENSE_SLOT_HALFPAGE: ${VITE_ADSENSE_SLOT_HALFPAGE:-}
+        VITE_ADSENSE_SLOT_INFEED: ${VITE_ADSENSE_SLOT_INFEED:-}
+        VITE_IMA_AD_TAG: ${VITE_IMA_AD_TAG:-}
+        VITE_GEO_ENDPOINT: ${VITE_GEO_ENDPOINT:-}
+    image: mirroractu:latest
+    container_name: mirroractu
+    ports:
+      # host:container. Change the left side to serve on another port, e.g. "80:8080".
+      - "${PORT:-8080}:8080"
+    restart: unless-stopped
+    # The container needs no write access and no extra privileges.
+    read_only: true
+    tmpfs:
+      - /tmp
+      # nginx writes its config here at start-up (the port is filled in from a template).
+      # It must belong to the nginx user (id 101), who is not root.
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

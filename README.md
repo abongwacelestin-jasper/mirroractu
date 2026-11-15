@@ -14,11 +14,56 @@ npm run typecheck   # TypeScript check
 When hosting the build, serve `index.html` for unknown paths so deep links such as
 `/story/s-cop31` load.
 
+## Deploy with Docker
+
+The site ships as one small container: nginx serving the built files as a non-root user.
+
+```
+cp deploy/env.example .env          # optional: Google ad ids, port
+docker compose up -d --build        # build and start on http://localhost:8080
+docker compose logs -f web          # watch it
+docker compose down                 # stop it
+```
+
+Or without Compose: `docker build -t mirroractu .` then `docker run -d -p 8080:8080 mirroractu`.
+
+| File | What it does |
+|---|---|
+| `Dockerfile` | Stage 1 installs, typechecks and builds with Node 22. Stage 2 copies the result into `nginx-unprivileged` |
+| `deploy/nginx.conf.template` | Sends every page address (including `/fr/…`) to the app, caches hashed assets for a year and media for a week, never caches `index.html`, adds security headers, answers `/healthz` |
+| `docker-compose.yml` | One service, read-only file system, no extra privileges, restarts unless stopped |
+| `railway.json` | Tells Railway to build from the Dockerfile and check `/healthz` |
+| `deploy/env.example` | The settings, all optional. They are baked in at build time, so rebuild after changing them |
+
+On a server:
+
+1. Install Docker, clone the repository, `cp deploy/env.example .env`, then `docker compose up -d --build`.
+2. Put HTTPS in front of port 8080: a managed load balancer, Cloudflare, or a reverse proxy such as Caddy or Traefik
+   on the same machine. The container itself speaks plain HTTP.
+3. To update: `git pull && docker compose up -d --build`.
+
+### Railway
+
+1. In Railway: **New Project → Deploy from GitHub repo** and pick this repository. It finds the `Dockerfile` and
+   `railway.json` on its own. One service is all the site needs: no database, volume or worker.
+2. **Settings → Networking → Generate Domain** for a public `https://…up.railway.app` address (HTTPS is included).
+   Add your own domain in the same place.
+3. Optional, under **Variables**: the `VITE_…` settings from `deploy/env.example`. They are used while building,
+   so Railway rebuilds when you change them. Do not set `PORT`: Railway provides it and the container listens on it.
+4. Every push to `main` redeploys.
+
+Railway does not tell the app which country a reader is in, so editions use the device time zone there. For
+IP-accurate editions put Cloudflare in front of the Railway domain (it sends `CF-IPCountry`), or set `VITE_GEO_ENDPOINT`.
+
+**Reader's country**: if the proxy or CDN in front sends `CF-IPCountry`, `X-Vercel-IP-Country` or `X-Country-Code`,
+nginx passes it to the app and editions become IP-accurate. Without it, the device time zone is used.
+
 ## Folder structure
 
 ```
 index.html                 page shell and the first-load splash (logo, wordmark, progress bar)
 public/                    favicon; media/ holds the photographs and video
+Dockerfile, docker-compose.yml, deploy/   container build, web server config, settings template
 src/
   main.tsx                 entry: router + render
   App.tsx                  route table; every page except the front page is code-split
