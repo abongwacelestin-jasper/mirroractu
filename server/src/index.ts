@@ -43,6 +43,8 @@ app.setErrorHandler((err: any, req, reply) => {
   return reply.code(500).send({ error: 'Something went wrong on our side.' })
 })
 
+// Plain /healthz so the API can share the root railway.json health check (/healthz) when it is built from the root Dockerfile with APP_TARGET=api.
+app.get('/healthz', async () => ({ ok: true }))
 await app.register(async (api) => {
   await api.register(publicRoutes)
   await api.register(adminRoutes)
