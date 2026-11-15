@@ -7,12 +7,14 @@ import { CorrectionForm } from '@/components/overlays/CorrectionForm'
 import { LiveWire } from '@/components/live/LiveFeed'
 import { Modal } from '@/components/overlays/Modal'
 import { useToast } from '@/components/overlays/Toast'
-import { Ledger, StoryRows } from '@/components/story/StoryParts'
+import { StoryActions } from '@/components/feed/FeedCard'
+import { StoryImage, StoryVideo } from '@/components/story/StoryImage'
+import { ImageCard, Ledger } from '@/components/story/StoryParts'
 import { Button, Container, Hl, TextLink, buttonClass } from '@/components/ui'
 import { Viz } from '@/components/story/Viz'
 import { STORIES, TIERS, VIZ, categoryName, formatDate, getStory, newestFirst, sectionPath, storyPath } from '@/data'
 import { useWire } from '@/live/feed'
-import { useSavedStories, useTextSize } from '@/lib/store'
+import { useReadStories, useSavedStories, useTextSize } from '@/lib/store'
 import { SideBlock } from '@/pages/SectionPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -24,6 +26,12 @@ export function StoryPage() {
   const [shareOpen, setShareOpen] = useState(false)
   const toast = useToast()
   const [progress, setProgress] = useState(0)
+  const [read, markRead] = useReadStories()
+
+  // Opening a story marks it read: the feed and The Brief use this.
+  useEffect(() => {
+    if (story) markRead(story.id)
+  }, [story?.id])
   const liveUpdates = useWire({ storyId, max: 1 }).items.length > 0
 
   useEffect(() => {
@@ -43,7 +51,9 @@ export function StoryPage() {
   const sectionName = categoryName(section)
   const isSaved = saved.includes(story.id)
   const [tierName, tierRule] = TIERS[story.tier]
-  const related = newestFirst(STORIES.filter((s) => s.id !== story.id && s.cats.some((c) => story.cats.includes(c)))).slice(0, 4)
+  // Keep reading: related stories, unread ones first.
+  const related = newestFirst(STORIES.filter((s) => s.id !== story.id && s.cats.some((c) => story.cats.includes(c))))
+  const upNext = [...related.filter((s) => !read.includes(s.id)), ...related.filter((s) => read.includes(s.id))].slice(0, 4)
   const siblings = newestFirst(STORIES.filter((s) => s.cats[0] === section))
   const i = siblings.indexOf(story)
   const newer = siblings[i - 1]
@@ -55,19 +65,19 @@ export function StoryPage() {
   return (
     <article>
       <div aria-hidden="true" className="fixed left-0 top-0 z-40 h-[3px] bg-signal" style={{ width: `${progress * 100}%` }} />
-      <Container className="pb-24 pt-14">
-        <header className="max-w-[980px]">
+      <Container className="pb-16 pt-7 lg:pb-24 lg:pt-14">
+        <header className="max-w-[1100px]">
           <TextLink to={sectionPath(section)} className="text-sm">{sectionName}</TextLink>
-          <h1 className="mb-[22px] mt-[18px] text-[clamp(36px,4.8vw,64px)] leading-[1.02] tracking-[-0.035em]">{story.h}</h1>
-          <p className="max-w-[34em] font-serif text-[23px] leading-[1.25] text-muted sm:text-[28px]">{story.st}</p>
+          <h1 className="mb-4 mt-3 text-[clamp(31px,4.8vw,64px)] leading-[1.02] tracking-[-0.035em] lg:mb-[22px] lg:mt-[18px]">{story.h}</h1>
+          <p className="max-w-[34em] font-serif text-[20px] leading-[1.25] text-muted sm:text-[28px]">{story.st}</p>
         </header>
 
-        <div className="mt-7 flex flex-wrap items-center gap-x-7 gap-y-2.5 border-y border-b-rule border-t-ink py-4 text-[14.5px]">
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-y border-b-rule border-t-ink py-3 text-[13.5px] lg:mt-7 lg:gap-x-7 lg:py-4 lg:text-[14.5px]">
           <span className="font-semibold">{story.desk.split(' · ')[0]}</span>
           <span>{story.dl ? `Reported ${story.dl}` : `Source date ${formatDate(story.d, true)}`}</span>
           <span>{minutes} min read</span>
           <span>Compiled 15 Nov 2026 from {story.src.length} {story.src.length > 1 ? 'sources' : 'source'}</span>
-          <span className="flex flex-wrap gap-2 sm:ml-auto">
+          <span className="flex w-full items-center justify-between gap-2 lg:ml-auto lg:w-auto">
             <span role="group" aria-label="Text size" className="inline-flex overflow-hidden rounded-full border border-ink">
               {(['m', 'l'] as const).map((s) => (
                 <button
@@ -82,32 +92,22 @@ export function StoryPage() {
                 </button>
               ))}
             </span>
-            <Button
-              variant="line"
-              size="sm"
-              aria-pressed={isSaved}
-              onClick={() => {
-                toggleSaved(story.id)
-                toast(isSaved ? 'Removed from saved stories' : 'Story saved. Find it under Saved stories.')
-              }}
-            >
-              {isSaved ? 'Saved' : 'Save story'}
-            </Button>
-            <Button variant="line" size="sm" onClick={() => setShareOpen(true)}>
-              Share
-            </Button>
+            <StoryActions story={story} onShare={() => setShareOpen(true)} className="-mr-2.5 gap-0 sm:gap-1" />
           </span>
         </div>
 
-        <div className="mt-11 grid gap-10 lg:grid-cols-12 lg:gap-x-8">
+        <div className="mt-6 grid gap-10 lg:mt-11 lg:grid-cols-12 lg:gap-x-8">
           <div className="min-w-0 lg:col-span-8">
-            <p className={twMerge('max-w-[34em] leading-[1.5]', large ? 'text-[26px]' : 'text-[22px]')}>{story.what}</p>
+            <StoryImage story={story} eager className="-mx-[18px] mb-6 sm:mx-0 lg:mb-9 [&_figcaption]:px-[18px] sm:[&_figcaption]:px-0" />
+            <p className={twMerge('max-w-[34em] leading-[1.5]', large ? 'text-[23px] sm:text-[26px]' : 'text-[19px] sm:text-[22px]')}>{story.what}</p>
 
             {VIZ[story.id] && VIZ[story.id].k !== 'fig' && <Viz story={story} className="mt-9 max-w-[620px]" />}
 
             <div className="mt-11 border-t-2 border-ink pt-[26px]">
               <Ledger confirmed={story.ok} open={story.un} textSize={size} />
             </div>
+
+            <StoryVideo storyId={story.id} className="mt-12" />
 
             <div className="mt-12 border-l-[3px] border-signal pl-[26px]">
               <h2 className="mb-2 text-[15px] tracking-normal">Why it matters</h2>
@@ -137,7 +137,30 @@ export function StoryPage() {
               </ol>
             </div>
 
-            <nav aria-label={`More in ${sectionName}`} className="mt-16 grid border-t-2 border-ink sm:grid-cols-2 sm:gap-8">
+            {upNext.length > 0 && (
+              <section aria-label="Keep reading" className="mt-16 border-t-2 border-ink pt-4">
+                <div className="mb-6 flex items-baseline justify-between gap-4">
+                  <h2 className="text-[28px] font-extrabold tracking-[-0.03em]">Keep reading</h2>
+                  <TextLink to={sectionPath(section)} className="text-[14.5px]">All {sectionName}</TextLink>
+                </div>
+                <Link to={storyPath(upNext[0].id)} className="group grid gap-6 sm:grid-cols-2">
+                  <StoryImage story={upNext[0]} caption={false} ratio="aspect-[3/2]" />
+                  <div>
+                    <p className="text-[13px] font-semibold text-signal">Up next</p>
+                    <h3 className="mt-2 text-[28px] leading-[1.1]"><Hl>{upNext[0].h}</Hl></h3>
+                    <p className="mt-3 text-muted">{upNext[0].st}</p>
+                    <p className="mt-4 text-[13.5px] text-muted">{upNext[0].ok.length} confirmed · {upNext[0].un.length} still open</p>
+                  </div>
+                </Link>
+                {upNext.length > 1 && (
+                  <div className="mt-9 grid gap-x-6 gap-y-8 border-t border-rule pt-7 sm:grid-cols-3">
+                    {upNext.slice(1).map((s) => <ImageCard key={s.id} story={s} />)}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <nav aria-label={`More in ${sectionName}`} className="mt-12 grid border-t border-rule sm:grid-cols-2 sm:gap-8">
               {newer ? (
                 <Link to={storyPath(newer.id)} className="group block py-5">
                   <small className="mb-1.5 block text-[13.5px] text-muted">Newer in {sectionName}</small>
@@ -168,9 +191,6 @@ export function StoryPage() {
               </div>
             )}
             <AdSlot format="mpu" slot={2} placement={`the ${sectionName} story page, right-hand column`} className="mb-10" />
-            <SideBlock title="Related">
-              {related.length ? <StoryRows stories={related} showDate={false} /> : <p className="pt-2 text-muted">Nothing related yet.</p>}
-            </SideBlock>
             <SideBlock title="Spotted a mistake?">
               <CorrectionToggle key={story.id} />
             </SideBlock>

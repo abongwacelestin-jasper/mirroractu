@@ -53,3 +53,17 @@ export function useTextSize(): [TextSize, (s: TextSize) => void] {
   const size = useStored('ma-size', 'm') as TextSize
   return [size, (s) => write('ma-size', s)]
 }
+
+/** Stories the reader has opened, oldest first. Drives "read" marks and the For you ranking. */
+export function useReadStories(): [string[], (id: string) => void] {
+  const list: string[] = JSON.parse(useStored('ma-read', '[]'))
+  const markRead = (id: string) => {
+    if (!list.includes(id)) write('ma-read', JSON.stringify([...list, id].slice(-200)))
+  }
+  return [list, markRead]
+}
+
+/** Stories the reader liked. Kept in this browser; there is no public count. */
+export const useLikedStories = () => useToggleList('ma-liked')
+/** Stories the reader asked not to see in their feed. */
+export const useHiddenStories = () => useToggleList('ma-hidden')

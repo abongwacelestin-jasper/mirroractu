@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useSiteActions } from '@/lib/actions'
+import { useEdition } from '@/lib/edition'
 import { CATEGORIES, sectionPath } from '@/data'
 import { Container } from '@/components/ui'
 
@@ -17,14 +18,15 @@ const NEWS_TOPICS: [string, string][] = [
 type Props = { formRef: React.RefObject<HTMLFormElement>; onSearch: (q?: string) => void; onTop: () => void }
 
 export function Footer({ formRef, onSearch, onTop }: Props) {
-  const { openCookieSettings, openCorrection } = useSiteActions()
+  const { openCookieSettings, openCorrection, openEdition } = useSiteActions()
+  const [country] = useEdition()
   return (
     <footer className="border-t border-rule-dark bg-ink text-mirror">
       <Container>
         <div className="grid items-end gap-8 border-b border-rule-dark pb-9 pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:pb-12 lg:pt-16">
           <div className="min-w-0">
             <div className="whitespace-nowrap text-[clamp(44px,6vw,76px)] font-extrabold leading-[0.9] tracking-[-0.035em] text-white">
-              Mirror<b className="font-extrabold text-signal">Actu</b>
+              <span translate="no">Mirror<b className="font-extrabold text-signal">Actu</b></span>
             </div>
             <p className="mb-5 mt-[18px] font-serif text-[26px] leading-[1.15] text-white">
               Today, reflected. <span className="text-mirror">Tomorrow, remembered.</span>
@@ -51,6 +53,7 @@ export function Footer({ formRef, onSearch, onTop }: Props) {
             <li><FootLink to="/coming-up">Coming up</FootLink></li>
             <li><FootLink to="/live">Live data</FootLink></li>
             <li><FootLink to="/saved">Saved stories</FootLink></li>
+            <li><FootLink to="/offers">Offers (advertising)</FootLink></li>
             <li><button type="button" onClick={() => onSearch()} className="hover:text-white">Search</button></li>
           </Column>
           <Column title="Trust">
@@ -66,13 +69,14 @@ export function Footer({ formRef, onSearch, onTop }: Props) {
             <li><FootLink to="/legal">Contact</FootLink></li>
             <li><FootLink to="/legal">Privacy</FootLink></li>
             <li><FootLink to="/legal">Terms of use</FootLink></li>
+            <li><FootLink to="/legal#credits">Picture credits</FootLink></li>
             <li><button type="button" onClick={openCookieSettings} className="text-left hover:text-white">Cookie settings</button></li>
           </Column>
         </div>
 
         <div className="flex flex-col items-start justify-between gap-x-10 gap-y-5 border-t border-rule-dark py-[22px] text-sm sm:flex-row sm:flex-wrap sm:items-center">
           <dl className="flex flex-col gap-x-10 gap-y-3 sm:flex-row sm:flex-wrap">
-            <div><dt className="text-[12.5px] text-faint">Edition</dt><dd className="text-white">International, in English</dd></div>
+            <div><dt className="text-[12.5px] text-faint">Edition</dt><dd><button type="button" onClick={openEdition} className="text-white underline decoration-signal decoration-2 underline-offset-4">{country.name}. Change edition or language</button></dd></div>
             <div><dt className="text-[12.5px] text-faint">Status</dt><dd className="text-white">Preview, compiled 15 November 2026</dd></div>
             <div><dt className="text-[12.5px] text-faint">Website</dt><dd className="text-white">mirroractu.net</dd></div>
           </dl>

@@ -1,0 +1,84 @@
+import React from 'react'
+import { twMerge } from 'tailwind-merge'
+
+import { Story } from '@/data'
+import { VIDEOS, storyMedia } from '@/data/media'
+import { Viz, VizTone } from './Viz'
+
+/**
+ * A story's file photo with its credit. Photos are illustrative, so the caption always says
+ * "File photo" and names the author and licence. Renders nothing if the story has no photo.
+ * Set `linkCredit={false}` when the image sits inside a link (links cannot nest).
+ */
+export function StoryImage({
+  story,
+  ratio = 'aspect-[16/9]',
+  caption = true,
+  linkCredit = true,
+  eager = false,
+  className,
+}: {
+  story: Story
+  ratio?: string
+  caption?: boolean
+  linkCredit?: boolean
+  eager?: boolean
+  className?: string
+}) {
+  const m = storyMedia(story.id)
+  if (!m) return null
+  const credit = `${m.credit}, ${m.licence}`
+  return (
+    <figure className={className}>
+      <div className={twMerge('overflow-hidden bg-paper-2', ratio)}>
+        <img
+          src={m.src}
+          alt={m.alt}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transition-none"
+        />
+      </div>
+      {caption && (
+        <figcaption className="mt-1.5 text-[11.5px] leading-snug text-muted">
+          File photo: {m.alt}.{' '}
+          {linkCredit ? (
+            <a href={m.page} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-ink">{credit}</a>
+          ) : (
+            credit
+          )}
+        </figcaption>
+      )}
+    </figure>
+  )
+}
+
+/** The picture slot of a card: the file photo if there is one, otherwise the data graphic. */
+export function StoryMedia({ story, vizTone = 'paper', ratio, className }: { story: Story; vizTone?: VizTone; ratio?: string; className?: string }) {
+  return storyMedia(story.id) ? (
+    <StoryImage story={story} ratio={ratio} linkCredit={false} className={className} />
+  ) : (
+    <Viz story={story} tone={vizTone} className={className} />
+  )
+}
+
+export const hasPhoto = (story: Story) => !!storyMedia(story.id)
+
+/** A story's video, with its title, description and credit. Never autoplays. */
+export function StoryVideo({ storyId, dark = false, className }: { storyId: string; dark?: boolean; className?: string }) {
+  const v = VIDEOS[storyId]
+  if (!v) return null
+  return (
+    <figure className={className}>
+      <p className={twMerge('mb-2 flex items-center gap-2 text-[13px] font-semibold', dark ? 'text-white' : 'text-ink')}>
+        <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-signal text-[9px] text-ink">▶</span>
+        Video · {v.title}
+      </p>
+      <video src={v.src} controls muted playsInline preload="metadata" aria-label={v.alt} className="aspect-video w-full bg-ink" />
+      <figcaption className={twMerge('mt-1.5 text-[11.5px] leading-snug', dark ? 'text-mirror' : 'text-muted')}>
+        {v.alt}. Data to 2022.{' '}
+        <a href={v.page} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{v.credit}, {v.licence}</a>
+      </figcaption>
+    </figure>
+  )
+}

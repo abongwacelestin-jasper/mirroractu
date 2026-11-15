@@ -10,6 +10,10 @@ export type AdInfo = { sponsor: string; format: string; size: string; placement:
 export type SiteActions = {
   openSearch: (query?: string) => void
   openNewsletter: () => void
+  /** The "pick your desks" welcome. */
+  openWelcome: () => void
+  /** Country edition and language picker. */
+  openEdition: () => void
   openCookieSettings: () => void
   openAdInfo: (ad: AdInfo) => void
   /** `storyTitle` ties the report to a story; leave it out for a general report. */
@@ -21,6 +25,8 @@ const noop = () => {}
 export const SiteActionsContext = createContext<SiteActions>({
   openSearch: noop,
   openNewsletter: noop,
+  openWelcome: noop,
+  openEdition: noop,
   openCookieSettings: noop,
   openAdInfo: noop,
   openCorrection: noop,

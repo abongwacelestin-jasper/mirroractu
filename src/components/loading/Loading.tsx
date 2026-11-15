@@ -2,6 +2,7 @@ import React from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { twMerge } from 'tailwind-merge'
 
+import { AnimatedLogo } from '@/components/brand/AnimatedLogo'
 import { Container } from '@/components/ui'
 
 const EASE = [0.23, 1, 0.32, 1] as const
@@ -20,25 +21,14 @@ export function BrandSplash() {
   return (
     <div role="status" aria-label="Loading MirrorActu" className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-ink text-white">
       <div className="flex items-center gap-4">
-        <svg viewBox="0 0 100 100" className="size-16 overflow-visible sm:size-20" aria-hidden="true">
-          <defs>
-            <pattern id="splash-scan" width="100" height="5" patternUnits="userSpaceOnUse">
-              <rect width="100" height="2.6" fill="#C9D1DC" />
-            </pattern>
-          </defs>
-          <motion.path initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={t(0.05)} fill="#F4F1EA" d="M12 88V12h14.5L50 42.5V68L26.5 38.5V88Z" />
-          <motion.path initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={t(0.15)} fill="url(#splash-scan)" d="M88 88V12H73.5L50 42.5V68L73.5 38.5V88Z" />
-          <motion.line initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={t(0.3)} x1="50" y1="2" x2="50" y2="14" stroke="#FF5A36" strokeWidth="1.2" strokeDasharray="2.4 2.4" />
-          <motion.line initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={t(0.3)} x1="50" y1="72" x2="50" y2="98" stroke="#FF5A36" strokeWidth="1.2" strokeDasharray="2.4 2.4" />
-          <motion.circle initial={{ opacity: 0, cy: 10 }} animate={{ opacity: 1, cy: 25 }} transition={t(0.4, 0.24)} fill="#FF5A36" cx="50" r="5.2" />
-        </svg>
+        <AnimatedLogo className="size-16 sm:size-20" />
         <motion.span
           initial={{ opacity: 0, x: -6 }}
           animate={{ opacity: 1, x: 0 }}
           transition={t(0.45)}
           className="whitespace-nowrap text-[40px] font-extrabold leading-[0.9] tracking-[-0.035em] sm:text-[52px]"
         >
-          Mirror<b className="font-extrabold text-signal">Actu</b>
+          <span translate="no">Mirror<b className="font-extrabold text-signal">Actu</b></span>
         </motion.span>
       </div>
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={t(0.55)} className="mt-5 font-serif text-xl text-mirror">

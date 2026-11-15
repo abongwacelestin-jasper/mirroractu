@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
-import { useStoredValue } from '@/lib/store'
+import { CATEGORIES } from '@/data'
+import { useFollowedSections, useStoredValue } from '@/lib/store'
 import { EmailField } from '@/components/layout/Footer'
 import { Logo } from '@/components/brand/Logo'
 import { CorrectionForm } from '@/components/overlays/CorrectionForm'
@@ -46,7 +47,7 @@ export function CookieConsent({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-            className="fixed inset-x-3 bottom-3 z-[55] border border-rule bg-white p-5 shadow-[0_24px_48px_-20px_rgba(14,20,36,.45)] sm:inset-x-auto sm:right-5 sm:bottom-5 sm:max-w-[420px]"
+            className="fixed inset-x-3 bottom-[72px] z-[55] border border-rule bg-white p-5 shadow-[0_24px_48px_-20px_rgba(14,20,36,.45)] sm:inset-x-auto sm:right-5 sm:max-w-[420px] lg:bottom-5"
           >
             <h2 className="text-lg">Cookies on MirrorActu</h2>
             <p className="mt-1.5 text-[14.5px] text-muted">
@@ -173,6 +174,44 @@ export function CorrectionModal({ open, storyTitle, onClose }: { open: boolean; 
       <p className="mt-3 border-t border-rule pt-3 text-[13px] text-muted">
         Corrections are made in the open with a dated note. Earlier versions are kept.
       </p>
+    </Modal>
+  )
+}
+
+/**
+ * First-visit welcome: pick the desks to follow. Shown once, after the cookie choice, and
+ * reopened from "Edit your desks". Choices are stored in this browser only.
+ */
+export function WelcomeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [follows, toggle] = useFollowedSections()
+  return (
+    <Modal open={open} onClose={onClose} title="Make MirrorActu yours" tone="dark" className="sm:max-w-[600px]">
+      <Logo className="size-10" />
+      <h2 className="mt-5 font-serif text-[40px] font-normal leading-none sm:text-[46px]">
+        Make MirrorActu <span className="text-mirror">yours.</span>
+      </h2>
+      <p className="mt-3 text-mirror-light">Pick the desks you care about. Their stories lead your feed, and you can change them any time.</p>
+      <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {CATEGORIES.map((c) => {
+          const on = follows.includes(c.id)
+          return (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggle(c.id)}
+              className="border border-rule-dark px-3 py-3 text-left transition-colors duration-150 hover:border-white aria-pressed:border-signal aria-pressed:bg-signal aria-pressed:text-ink"
+            >
+              <span className="block text-[17px] font-semibold">{c.name}</span>
+              <span className="block text-[12.5px] opacity-75">{on ? 'Following' : 'Tap to follow'}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-6 flex flex-wrap items-center gap-4">
+        <Button onClick={onClose}>{follows.length ? `Start reading with ${follows.length} ${follows.length > 1 ? 'desks' : 'desk'}` : 'Start reading'}</Button>
+        <span className="text-[13px] text-mirror">No account needed. Stored in this browser only.</span>
+      </div>
     </Modal>
   )
 }

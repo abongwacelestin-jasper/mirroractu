@@ -4,12 +4,16 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
 import { CATEGORIES, CategoryId, EDITION_DATE, getStory, sectionPath, storiesIn, storyDate, storyPath } from '@/data'
+import { useSiteActions } from '@/lib/actions'
+import { useEdition } from '@/lib/edition'
 import { useSavedStories } from '@/lib/store'
 import { Logo } from '@/components/brand/Logo'
 import { Container, Hl, MonoDate, TextLink, buttonClass } from '@/components/ui'
 
 export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSubscribe: () => void }) {
   const [saved] = useSavedStories()
+  const [country] = useEdition()
+  const { openEdition } = useSiteActions()
   const [menu, setMenu] = useState<CategoryId | null>(null)
   const timer = useRef<number>()
   const { pathname } = useLocation()
@@ -27,29 +31,35 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
 
   return (
     <>
-      <div className="border-b border-rule-dark bg-ink text-[13px] text-mirror">
+      <div className="hidden border-b border-rule-dark bg-ink text-[13px] text-mirror lg:block">
         <Container className="flex justify-between gap-6 py-[9px]">
-          <span className="hidden sm:inline">{EDITION_DATE}</span>
+          <span className="hidden sm:inline">
+            {EDITION_DATE}
+            <button type="button" onClick={openEdition} className="ml-4 font-semibold text-mirror-light hover:text-white">
+              {country.name} edition · Language ▾
+            </button>
+          </span>
           <nav aria-label="Reader tools" className="flex gap-6">
             <Link to="/saved" className="hover:text-white">Saved stories{saved.length ? ` (${saved.length})` : ''}</Link>
             <Link to="/brief" className="hidden hover:text-white md:inline">The Brief</Link>
             <Link to="/coming-up" className="hidden hover:text-white md:inline">Coming up</Link>
             <Link to="/live" className="hidden hover:text-white md:inline">Live data</Link>
             <Link to="/how-we-work" className="hidden hover:text-white md:inline">How we work</Link>
+            <Link to="/offers" className="hidden hover:text-white md:inline">Offers <span className="ml-1 bg-mirror/20 px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.12em]">Ad</span></Link>
           </nav>
         </Container>
       </div>
 
       <header className="sticky top-0 z-30 bg-ink text-white" onMouseLeave={() => hover(null)}>
-        <Container className="flex flex-wrap items-center gap-x-4 pt-3 lg:h-[68px] lg:flex-nowrap lg:gap-[22px] lg:pt-0 xl:gap-9">
-          <Link to="/" aria-label="MirrorActu, home" className="mr-auto flex items-center gap-2.5 lg:mr-0">
-            <Logo className="size-8" />
-            <span aria-hidden="true" className="whitespace-nowrap text-[26px] font-extrabold leading-[0.9] tracking-[-0.035em]">
-              Mirror<b className="font-extrabold text-signal">Actu</b>
+        <Container className="flex flex-wrap items-center gap-x-4 pt-2.5 lg:h-[68px] lg:flex-nowrap lg:gap-[22px] lg:pt-0 xl:gap-9">
+          <Link to="/" aria-label="MirrorActu, home" className="mr-auto flex items-center gap-2 sm:gap-2.5 lg:mr-0">
+            <Logo className="size-7 sm:size-8" />
+            <span aria-hidden="true" className="whitespace-nowrap text-[21px] font-extrabold leading-[0.9] tracking-[-0.035em] sm:text-[26px]">
+              <span translate="no">Mirror<b className="font-extrabold text-signal">Actu</b></span>
             </span>
           </Link>
 
-          <ul className="no-scrollbar order-last -mx-[18px] mt-1.5 flex h-11 basis-full overflow-x-auto px-[9px] sm:-mx-6 sm:px-[15px] lg:order-none lg:mx-0 lg:mt-0 lg:h-full lg:min-w-0 lg:flex-1 lg:basis-auto lg:overflow-visible lg:px-0">
+          <ul className="no-scrollbar order-last -mx-[18px] mt-1 flex h-10 basis-full overflow-x-auto px-[9px] sm:-mx-6 sm:px-[15px] lg:order-none lg:mx-0 lg:mt-0 lg:h-full lg:min-w-0 lg:flex-1 lg:basis-auto lg:overflow-visible lg:px-0">
             {CATEGORIES.map((c) => (
               <li key={c.id} className="flex" onMouseEnter={() => hover(c.id)} onFocus={() => setMenu(c.id)}>
                 <NavLink
@@ -69,18 +79,27 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
             ))}
           </ul>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onSearch}
               aria-label="Search stories"
-              className="flex items-center gap-2.5 rounded-full border border-transparent bg-mirror/12 px-3 py-2 text-sm text-mirror-light transition-colors duration-150 hover:border-mirror hover:text-white xl:min-w-[190px] xl:pl-3.5"
+              className="flex items-center gap-2.5 rounded-full border border-transparent bg-mirror/12 px-2.5 py-2 text-sm sm:px-3 text-mirror-light transition-colors duration-150 hover:border-mirror hover:text-white xl:min-w-[190px] xl:pl-3.5"
             >
               <SearchIcon className="size-[15px] flex-none" />
               <span className="hidden xl:inline">Search stories</span>
               <kbd className="ml-auto hidden rounded border border-rule-dark px-1.5 font-mono text-[11px] xl:inline">/</kbd>
             </button>
-            <button type="button" onClick={onSubscribe} className={buttonClass({ size: 'sm' })}>
+            <button
+              type="button"
+              onClick={openEdition}
+              aria-label={`Edition: ${country.name}. Change edition or language`}
+              translate="no"
+              className="flex h-9 items-center rounded-full bg-mirror/12 px-3 text-[12.5px] font-bold tracking-wide text-mirror-light transition-colors duration-150 hover:text-white lg:hidden"
+            >
+              {country.code === 'INT' ? 'INT' : country.code}
+            </button>
+            <button type="button" onClick={onSubscribe} className={buttonClass({ size: 'sm', className: 'px-3 text-[13px] max-[389px]:hidden sm:px-[15px] sm:text-sm' })}>
               Subscribe
             </button>
           </div>

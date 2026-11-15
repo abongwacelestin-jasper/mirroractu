@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
+import { ADVERTISERS, Advertiser, offersPath } from '@/data/offers'
 import { AdInfo, useSiteActions } from '@/lib/actions'
 import { useStoredValue } from '@/lib/store'
 import { Bone } from '@/components/loading/Loading'
@@ -17,8 +18,9 @@ import { Button, TextLink } from '@/components/ui'
  *  - each slot has an "About this advert" button (who paid, why you see it, how to hide it);
  *  - the space is reserved before the creative loads, so the page never jumps.
  *
- * The creatives below are placeholders standing in for the ad server. To go live, replace the
- * body of `Creative` with the GPT / Prebid render for `format` and keep the frame around it.
+ * The creatives come from data/offers.ts (placeholder advertisers) and link to that
+ * advertiser's offers page. To go live, replace the body of `Creative` with the ad-server
+ * render for `format` and keep the frame around it.
  */
 export type AdFormat = 'leaderboard' | 'mpu' | 'infeed' | 'halfpage'
 
@@ -26,17 +28,14 @@ export const AD_FORMATS: Record<AdFormat, { name: string; size: string; minH: st
   leaderboard: { name: 'Leaderboard', size: '728 × 90', minH: 'min-h-[90px]', where: 'Between sections on the front page, and at the foot of list pages', tag: 'Advertisement' },
   mpu: { name: 'Rectangle', size: '300 × 250', minH: 'min-h-[250px]', where: 'In the right-hand column of section, story and live pages', tag: 'Advertisement' },
   halfpage: { name: 'Half page', size: '300 × 600', minH: 'min-h-[600px]', where: 'Right-hand column of story pages, wide screens only', tag: 'Advertisement' },
-  infeed: { name: 'In-feed', size: 'Native', minH: 'min-h-[120px]', where: 'Inside story lists, and after "Why it matters" on a story', tag: 'Sponsored' },
+  infeed: { name: 'In-feed', size: 'Native', minH: 'min-h-[96px]', where: 'Inside story lists, and after "Why it matters" on a story', tag: 'Sponsored' },
 }
 
-type CreativeData = { sponsor: string; line: string; cta: string; bg: string; fg: string; accent: string }
+type CreativeData = Advertiser
 
-const CREATIVES: CreativeData[] = [
-  { sponsor: 'Kigali Business Expo', line: 'Three days, 400 exhibitors, one city. 3 to 5 December 2026.', cta: 'Register free', bg: '#E9E4D8', fg: '#0E1424', accent: '#0E1424' },
-  { sponsor: 'Akagera Air', line: 'Kigali to Nairobi from $189 return. Book by 30 November.', cta: 'See fares', bg: '#1A2236', fg: '#FFFFFF', accent: '#F2B441' },
-  { sponsor: 'Imboni Bank', line: 'Open a business account in ten minutes, from your phone.', cta: 'Open an account', bg: '#F4F1EA', fg: '#0E1424', accent: '#4A5166' },
-  { sponsor: 'Nyungwe Lodge', line: 'Rainforest weekends for two, breakfast included.', cta: 'Check dates', bg: '#C9D1DC', fg: '#0E1424', accent: '#0E1424' },
-]
+const CREATIVES = ADVERTISERS
+
+const MotionLink = motion.create(Link)
 
 /** Stand-in for ad-server latency once a slot scrolls into view. */
 const AD_LOAD_MS = 650
@@ -105,15 +104,15 @@ export function AdSlot({
   }
 
   return (
-    <aside ref={ref} aria-label={`${spec.tag}: ${ad.sponsor}`} className={twMerge('w-full border border-rule bg-paper/60 p-2.5', className)}>
+    <aside ref={ref} aria-label={`${spec.tag}: ${ad.name}`} className={twMerge('w-full border border-rule bg-paper/60 p-2.5', className)}>
       <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <AdTag>{spec.tag}</AdTag>
         <span className="text-[12.5px] text-muted">
-          Paid for by <b className="font-semibold text-ink">{ad.sponsor}</b>
+          Paid for by <b className="font-semibold text-ink">{ad.name}</b>
         </span>
         <button
           type="button"
-          onClick={() => openAdInfo({ sponsor: ad.sponsor, format: spec.name, size: spec.size, placement, onHide: () => setHidden(true) })}
+          onClick={() => openAdInfo({ sponsor: ad.name, format: spec.name, size: spec.size, placement, onHide: () => setHidden(true) })}
           className="ml-auto flex flex-none items-center gap-1.5 whitespace-nowrap text-[12.5px] font-semibold text-muted transition-colors duration-150 hover:text-ink"
         >
           <span aria-hidden="true" className="flex size-4 items-center justify-center rounded-full border border-current font-serif text-[11px] italic leading-none">i</span>
@@ -141,34 +140,29 @@ export function AdSlot({
 }
 
 function Creative({ ad, format }: { ad: CreativeData; format: AdFormat }) {
+  const row = format === 'leaderboard' || format === 'infeed'
   return (
-    <motion.a
+    <MotionLink
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      href="#advert"
-      onClick={(e) => e.preventDefault()}
-      rel="sponsored noopener"
-      className={twMerge(
-        'flex w-full p-5',
-        format === 'leaderboard' ? 'flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:py-4' : 'flex-col justify-between gap-6',
-        AD_FORMATS[format].minH
-      )}
+      to={`${offersPath(ad.category)}#${ad.id}`}
+      className={twMerge('group flex w-full p-5', row ? 'flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:py-4' : 'flex-col justify-between gap-6', AD_FORMATS[format].minH)}
       style={{ background: ad.bg, color: ad.fg }}
     >
       <div className="min-w-0">
-        <p className="text-[13px] font-semibold opacity-80">{ad.sponsor}</p>
+        <p className="text-[13px] font-semibold opacity-80">{ad.name}</p>
         <p className={twMerge('mt-1 font-semibold leading-tight tracking-[-0.015em]', format === 'halfpage' ? 'text-[30px]' : format === 'mpu' ? 'text-[22px]' : 'text-lg')}>
           {ad.line}
         </p>
       </div>
       <span
-        className="self-start whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold sm:self-auto"
+        className="flex-none self-start whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-transform duration-150 group-hover:translate-x-0.5"
         style={{ borderColor: ad.accent, color: ad.accent }}
       >
-        {ad.cta}
+        {ad.cta} →
       </span>
-    </motion.a>
+    </MotionLink>
   )
 }
 
@@ -199,7 +193,7 @@ export function AdInfoModal({ ad, onClose }: { ad: AdInfo | null; onClose: () =>
                   ? 'It was booked for this part of the site. You allowed advertising cookies, so our ad partner may also choose adverts for you.'
                   : 'It was booked for this part of the site. It is not based on you: advertising cookies are off.',
               ],
-              ['Status', 'Placeholder creative. The ad server is not connected in this preview.'],
+              ['Status', 'Placeholder advertiser. The ad server is not connected in this preview.'],
             ].map(([k, v]) => (
               <React.Fragment key={k}>
                 <dt className="border-t border-rule py-2.5 text-muted">{k}</dt>
@@ -251,7 +245,7 @@ export function AnchorAd({ enabled }: { enabled: boolean }) {
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > window.innerHeight * 0.8)
+    const onScroll = () => setScrolled(window.scrollY > window.innerHeight * 1.5)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -261,45 +255,37 @@ export function AnchorAd({ enabled }: { enabled: boolean }) {
     <AnimatePresence>
       {enabled && scrolled && !closed && (
         <motion.aside
-          aria-label={`Advertisement: ${ad.sponsor}`}
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
+          aria-label={`Advertisement: ${ad.name}`}
+          initial={{ y: 80, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 80, opacity: 0 }}
           transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
-          className="fixed inset-x-0 bottom-0 z-[52] border-t border-rule bg-white shadow-[0_-12px_32px_-16px_rgba(14,20,36,.4)] lg:hidden"
+          className="fixed inset-x-0 bottom-[calc(60px+env(safe-area-inset-bottom))] z-[52] flex items-stretch border-t border-rule shadow-[0_-12px_32px_-16px_rgba(14,20,36,.4)] lg:hidden"
+          style={{ background: ad.bg, color: ad.fg }}
         >
-          <div className="flex items-center justify-between gap-3 px-3 pt-2">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <AdTag />
-              <button
-                type="button"
-                onClick={() => openAdInfo({ sponsor: ad.sponsor, format: 'Anchor', size: '320 × 50', placement: 'the bottom edge of the screen, phones and tablets', onHide: () => setClosed(true) })}
-                className="truncate text-[12.5px] text-muted underline underline-offset-2"
-              >
-                Paid for by {ad.sponsor}
-              </button>
+          <Link to={`${offersPath(ad.category)}#${ad.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3">
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <AdTag className="bg-white/15 text-[9.5px]">Ad</AdTag>
+                <span className="truncate text-[11.5px] opacity-80">Paid for by {ad.name}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-[14px] font-semibold">{ad.line}</span>
             </span>
-            <button
-              type="button"
-              onClick={() => setClosed(true)}
-              aria-label="Close advert"
-              className="flex size-8 flex-none items-center justify-center rounded-full text-xl text-muted hover:bg-ink/5 hover:text-ink"
-            >
-              ×
-            </button>
-          </div>
-          <a
-            href="#advert"
-            onClick={(e) => e.preventDefault()}
-            rel="sponsored noopener"
-            className="m-2 mt-1 flex items-center justify-between gap-3 px-3.5 py-2.5"
-            style={{ background: ad.bg, color: ad.fg }}
-          >
-            <span className="min-w-0 text-[14.5px] font-semibold leading-tight">{ad.line}</span>
             <span className="flex-none whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] font-semibold" style={{ borderColor: ad.accent, color: ad.accent }}>
               {ad.cta}
             </span>
-          </a>
+          </Link>
+          <button
+            type="button"
+            onClick={() => openAdInfo({ sponsor: ad.name, format: 'Anchor', size: '320 × 50', placement: 'the bottom edge of the screen, phones and tablets', onHide: () => setClosed(true) })}
+            aria-label="About this advert"
+            className="flex w-9 flex-none items-center justify-center font-serif text-[15px] italic opacity-80 hover:opacity-100"
+          >
+            i
+          </button>
+          <button type="button" onClick={() => setClosed(true)} aria-label="Close advert" className="flex w-10 flex-none items-center justify-center text-xl opacity-80 hover:opacity-100">
+            ×
+          </button>
         </motion.aside>
       )}
     </AnimatePresence>

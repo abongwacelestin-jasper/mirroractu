@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 
 import { AdInfo, SiteActions, SiteActionsContext } from '@/lib/actions'
 import { dismissBoot, hasBootSplash } from '@/lib/boot'
+import { resumeTranslation } from '@/lib/translate'
 import { usePreviewState } from '@/lib/preview'
 import { useStoredValue } from '@/lib/store'
 import { AdInfoModal, AnchorAd } from '@/components/ads/AdSlot'
@@ -10,7 +11,10 @@ import { Footer } from '@/components/layout/Footer'
 import { LiveAlert, LiveBar } from '@/components/live/LiveFeed'
 import { BrandSplash, PageSkeleton, SkeletonKind } from '@/components/loading/Loading'
 import { Masthead } from '@/components/layout/Masthead'
-import { CookieConsent, CorrectionModal, NewsletterModal } from '@/components/overlays/Popups'
+import { TabBar } from '@/components/layout/TabBar'
+import { CookieConsent, CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
+import { EditionModal, TranslationBar } from '@/components/overlays/EditionModal'
+import { HousePromo } from '@/components/overlays/HousePromo'
 import { SearchDialog } from '@/components/layout/SearchDialog'
 import { ToastProvider } from '@/components/overlays/Toast'
 
@@ -20,10 +24,11 @@ import { ToastProvider } from '@/components/overlays/Toast'
  */
 const SPLASH_MS = 900
 const ROUTE_MS = 420
-const NEWSLETTER_AFTER_MS = 25000
+const WELCOME_AFTER_MS = 1500
 
 /** Pages that carry no advertising: the standards and legal pages. */
 const AD_FREE = ['/how-we-work', '/legal']
+const isAdFree = (path: string) => AD_FREE.includes(path) || path.startsWith('/offers')
 
 /**
  * Shell for every route: splash, masthead, live bar, search, the page (or its skeleton), footer,
@@ -36,6 +41,9 @@ export function Layout() {
   const [booting, setBooting] = useState(() => !hasBootSplash())
   const [routeLoading, setRouteLoading] = useState(false)
   const [newsletter, setNewsletter] = useState(false)
+  const [welcome, setWelcome] = useState(false)
+  const [edition, setEdition] = useState(false)
+  const [welcomeSeen, setWelcomeSeen] = useStoredValue('ma-welcome-seen', '')
   const [cookieSettings, setCookieSettings] = useState(false)
   const [adInfo, setAdInfo] = useState<AdInfo | null>(null)
   const [correction, setCorrection] = useState<{ open: boolean; storyTitle?: string }>({ open: false })
@@ -47,6 +55,8 @@ export function Layout() {
     () => ({
       openSearch: (query = '') => setSearch({ open: true, query }),
       openNewsletter: () => setNewsletter(true),
+      openWelcome: () => setWelcome(true),
+      openEdition: () => setEdition(true),
       openCookieSettings: () => setCookieSettings(true),
       openAdInfo: setAdInfo,
       openCorrection: (storyTitle) => setCorrection({ open: true, storyTitle }),
@@ -56,6 +66,7 @@ export function Layout() {
 
   useEffect(() => {
     dismissBoot()
+    resumeTranslation()
     const t = window.setTimeout(() => setBooting(false), SPLASH_MS)
     return () => window.clearTimeout(t)
   }, [])
@@ -75,11 +86,12 @@ export function Layout() {
 
   // The morning-email modal offers itself once per reader, and only after the cookie choice
   // is made, so two popups never stack.
+  // Popups queue: cookie choice first, then the welcome, then (much later) our own promo.
   useEffect(() => {
-    if (nlSeen || !consent || preview !== 'live') return
-    const t = window.setTimeout(() => setNewsletter(true), NEWSLETTER_AFTER_MS)
+    if (welcomeSeen || !consent || preview !== 'live') return
+    const t = window.setTimeout(() => setWelcome(true), WELCOME_AFTER_MS)
     return () => window.clearTimeout(t)
-  }, [nlSeen, consent, preview])
+  }, [welcomeSeen, consent, preview])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,13 +114,14 @@ export function Layout() {
   return (
     <ToastProvider>
       <SiteActionsContext.Provider value={actions}>
-        <div className="bg-white font-display text-base text-ink">
+        <div className="bg-white pb-[calc(60px+env(safe-area-inset-bottom))] font-display text-base text-ink lg:pb-0">
           {showSplash && <BrandSplash />}
           <a href="#content" className="absolute -left-[999px] top-0 z-[99] bg-signal px-3.5 py-2.5 text-ink focus:left-2 focus:top-2">
             Skip to content
           </a>
           <Masthead onSearch={() => actions.openSearch()} onSubscribe={actions.openNewsletter} />
           <LiveBar />
+          <TranslationBar />
           <SearchDialog
             open={search.open}
             query={search.query}
@@ -128,11 +141,21 @@ export function Layout() {
               setNlSeen('1')
             }}
           />
+          <WelcomeModal
+            open={welcome}
+            onClose={() => {
+              setWelcome(false)
+              setWelcomeSeen('1')
+            }}
+          />
+          <EditionModal open={edition} onClose={() => setEdition(false)} />
           <AdInfoModal ad={adInfo} onClose={() => setAdInfo(null)} />
           <CorrectionModal open={correction.open} storyTitle={correction.storyTitle} onClose={() => setCorrection((c) => ({ ...c, open: false }))} />
           {preview !== 'splash' && <CookieConsent forceOpen={preview === 'cookies'} settingsOpen={cookieSettings} onSettings={setCookieSettings} />}
-          <AnchorAd enabled={popupsAllowed && !AD_FREE.includes(pathname)} />
+          <AnchorAd enabled={popupsAllowed && !isAdFree(pathname)} />
           <LiveAlert enabled={popupsAllowed} />
+          <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition} />
+          <TabBar />
         </div>
       </SiteActionsContext.Provider>
     </ToastProvider>
@@ -142,6 +165,6 @@ export function Layout() {
 function skeletonFor(path: string): SkeletonKind {
   if (path === '/') return 'home'
   if (path.startsWith('/story/')) return 'story'
-  if (['/brief', '/coming-up', '/live', '/saved', '/how-we-work', '/legal'].includes(path)) return 'page'
+  if (['/brief', '/coming-up', '/live', '/saved', '/how-we-work', '/legal'].includes(path) || path.startsWith('/offers')) return 'page'
   return 'section'
 }

@@ -74,3 +74,19 @@
 @utility no-scrollbar {
   scrollbar-width: none;
 }
+
+/* Google's website translator: hide its own top banner and tooltip. Our language bar says the
+   page is machine translated by Google and offers the way back. */
+.goog-te-banner-frame,
+.skiptranslate > iframe,
+#goog-gt-tt,
+.goog-te-balloon-frame {
+  display: none !important;
+}
+body {
+  top: 0 !important;
+}
+.goog-text-highlight {
+  background: none !important;
+  box-shadow: none !important;
+}

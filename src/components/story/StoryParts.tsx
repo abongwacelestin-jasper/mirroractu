@@ -3,8 +3,9 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
-import { Story, categoryName, storyDate, storyPath } from '@/data'
+import { Story, VIZ, categoryName, storyDate, storyPath } from '@/data'
 import { Hl, MonoDate } from '@/components/ui'
+import { StoryImage, hasPhoto } from '@/components/story/StoryImage'
 import { Viz, VizTone } from '@/components/story/Viz'
 
 /** Section name and date above a headline. */
@@ -38,7 +39,7 @@ export function StoryCard({
 }) {
   return (
     <Link to={storyPath(story.id)} className="group block">
-      {withViz && <Viz story={story} tone={vizTone} className="mb-[22px]" />}
+      {withViz && (VIZ[story.id] ? <Viz story={story} tone={vizTone} className="mb-[22px]" /> : <StoryImage story={story} linkCredit={false} className="mb-[22px]" />)}
       <Kicker story={story} className="mb-2.5" />
       <h3 className={HEADLINE[size]}>
         <Hl>{story.h}</Hl>
@@ -73,12 +74,25 @@ export function StoryRows({ stories, showDate = true }: { stories: Story[]; show
  * The mirror: what is confirmed on one side, what is still open on the other,
  * split by the dashed signal axis. Collapses to a stack on phones.
  */
-export function Ledger({ confirmed, open, dark = false, textSize }: { confirmed: string[]; open: string[]; dark?: boolean; textSize?: 'm' | 'l' }) {
+export function Ledger({
+  confirmed,
+  open,
+  dark = false,
+  textSize,
+  stacked = false,
+}: {
+  confirmed: string[]
+  open: string[]
+  dark?: boolean
+  textSize?: 'm' | 'l'
+  /** Always one column, for narrow slots. */
+  stacked?: boolean
+}) {
   const reduce = useReducedMotion()
   const rule = dark ? 'border-rule-dark' : 'border-rule'
   const item = twMerge('border-t pt-3 leading-[1.45]', rule, textSize === 'l' ? 'text-xl' : textSize === 'm' ? 'text-[17px]' : 'text-base')
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[1fr_33px_1fr]">
+    <div className={twMerge('grid grid-cols-1', !stacked && 'sm:grid-cols-[1fr_33px_1fr]')}>
       <div>
         <h2 className="mb-3.5 flex items-center gap-2.5 text-[15px] font-semibold tracking-normal">
           <i className="inline-block size-3.5 bg-current" />
@@ -94,9 +108,9 @@ export function Ledger({ confirmed, open, dark = false, textSize }: { confirmed:
         initial={reduce ? false : { scaleY: 0, opacity: 0 }}
         animate={{ scaleY: 1, opacity: 1 }}
         transition={{ duration: 0.3, delay: 0.1, ease: [0.23, 1, 0.32, 1] }}
-        className="axis-x relative my-[30px] h-0.5 origin-left sm:axis-y sm:my-0 sm:h-auto sm:w-0.5 sm:origin-top sm:justify-self-center"
+        className={twMerge('axis-x relative my-[30px] h-0.5 origin-left', !stacked && 'sm:axis-y sm:my-0 sm:h-auto sm:w-0.5 sm:origin-top sm:justify-self-center')}
       >
-        <span className="absolute -top-1.5 left-0 size-3.5 rounded-full bg-signal sm:-left-1.5 sm:top-0" />
+        <span className={twMerge('absolute -top-1.5 left-0 size-3.5 rounded-full bg-signal', !stacked && 'sm:-left-1.5 sm:top-0')} />
       </motion.div>
 
       <div className={dark ? 'text-mirror' : 'text-muted'}>
@@ -109,5 +123,17 @@ export function Ledger({ confirmed, open, dark = false, textSize }: { confirmed:
         </ul>
       </div>
     </div>
+  )
+}
+
+/** Picture-led card: photo (or data graphic), kicker and headline. Used in grids of suggestions. */
+export function ImageCard({ story, standfirst = false }: { story: Story; standfirst?: boolean }) {
+  return (
+    <Link to={storyPath(story.id)} className="group block">
+      {VIZ[story.id] && !hasPhoto(story) ? <Viz story={story} className="mb-3.5" /> : <StoryImage story={story} caption={false} ratio="aspect-[3/2]" className="mb-3.5" />}
+      <Kicker story={story} />
+      <h3 className="mt-2 text-[20px] leading-[1.18]"><Hl>{story.h}</Hl></h3>
+      {standfirst && <p className="mt-2 text-[15px] text-muted">{story.st}</p>}
+    </Link>
   )
 }

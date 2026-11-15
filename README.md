@@ -18,7 +18,7 @@ When hosting the build, serve `index.html` for unknown paths so deep links such 
 
 ```
 index.html                 page shell and the first-load splash (logo, wordmark, progress bar)
-public/                    favicon
+public/                    favicon; media/ holds the photographs and video
 src/
   main.tsx                 entry: router + render
   App.tsx                  route table; every page except the front page is code-split
@@ -27,21 +27,30 @@ src/
     HomePage  SectionPage  StoryPage  BriefPage  AgendaPage
     LivePage  SavedPage  StandardsPage  LegalPage  NotFoundPage
   components/
-    layout/                Layout (owns every modal and popup), Masthead, Footer, SearchDialog
-    brand/                 Logo
+    layout/                Layout (owns every modal and popup), Masthead, TabBar (phones), Footer, SearchDialog
+    brand/                 Logo, AnimatedLogo
     loading/               BrandSplash, PageSkeleton, Bone
     ads/                   AdSlot, AnchorAd, AdInfoModal, AdTag
     live/                  LiveFeed (LiveBar, LiveWire, MarketTicker, LiveAlert), LiveHub (data modules)
-    overlays/              Modal, Popups (cookies, newsletter, correction), Toast, CorrectionForm
-    story/                 StoryParts (cards, rows, Confirmed / Still open ledger), Viz (charts)
+    overlays/              Modal, Popups (cookies, welcome, newsletter, correction), HousePromo, Toast, CorrectionForm
+    feed/                  Feed (For you / Following / Latest, new-updates prompt, endless scroll),
+                           FeedCard, Rails (your edition, desks to follow, happening now)
+    story/                 StoryParts (cards, rows, Confirmed / Still open ledger), Viz (charts),
+                           StoryImage (photos and video with credits)
     ui/                    Container, Button, TextLink, Pill, PageHeader and other basics
   data/
     index.ts               typed data access and helpers: the seam to swap for a CMS / API
     snapshot.ts            the 15 Nov 2026 story snapshot
+    countries.ts           editions, time-zone map, which countries each story is about
+    offers.ts              advertisers and their offers, by category (flights, stays, events, banking)
+    media.ts               photos and videos per story; media.generated.ts holds the credit list
   live/
     feed.ts                live feed store (wire + market quotes): the seam to swap for websockets
   lib/
-    store.ts               saved stories, followed sections, text size, consent (localStorage)
+    edition.ts             the reader's country edition (choice, geo lookup, time zone)
+    translate.ts           on-demand Google translation of the page
+    store.ts               saved stories, followed desks, read history, text size, consent (localStorage)
+    share.ts               share sheet or copy link
     actions.ts             useSiteActions(): open search, newsletter, cookie settings, advert info, corrections
     boot.ts                fades out the index.html splash once the app has mounted
     preview.ts             pins a UI state (splash, skeleton, popup) for tests
@@ -61,7 +70,45 @@ Imports use the `@/` alias for `src/`, e.g. `import { AdSlot } from '@/component
 | `/live` | Live data |
 | `/saved` | Saved stories (stored in localStorage) |
 | `/how-we-work` | Standards: `#about`, `#pipeline`, `#tiers`, `#sources`, `#ai`, `#corrections`, `#advertising`, `#live-data`, `#faq`, `#status` |
-| `/legal` | Legal and contact status |
+| `/offers`, `/offers/:category` | Advertiser offers: `flights`, `stays`, `events`, `banking`. Adverts link here |
+| `/legal` | Legal and contact status, picture credits at `#credits` |
+
+## The feed and the reader's edition
+
+The front page is built to feel personal without accounts. Everything is stored in the browser.
+
+- **Welcome**: first visit, after the cookie choice, readers pick the desks they care about.
+- **Feed**: *For you* puts unread stories from followed desks first; *Following* shows only those desks; *Latest* is everything.
+- **New updates**: wire items that arrive while reading wait behind a "Show new updates" button.
+- **Actions on every story**: Like, Save, Share and Hide. Likes nudge that desk up *For you*; there are no public counts because there are no accounts.
+- **Our own promo**: after about 35 seconds `HousePromo` rises from the bottom with the animated logo and offers the one thing the reader has not done yet. It rests for a day once closed.
+- **Progress**: stories are marked read when opened; The Brief shows "3 of 8 read"; story pages end with *Keep reading*.
+
+## Pictures and video
+
+Photos are freely licensed file photos from Wikimedia Commons (public domain, CC0, CC BY, CC BY-SA),
+stored in `public/media`. Each is captioned "File photo" with its credit and licence, and all are
+listed at `/legal#credits`. The video is a public-domain NASA visualisation. To add or change one,
+edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
+
+## Country editions and language
+
+- **Edition**: `src/lib/edition.ts` works out the reader's country (their own choice, then an optional
+  geo lookup, then the device time zone) and `src/data/countries.ts` curates for it: a *Near you*
+  strip, a boost in *For you*, and suggested languages. Readers change it from the masthead or footer.
+- **IP-accurate detection** needs hosting: have the host write `<meta name="ma-country" content="RW">`
+  from its geo header (Vercel `x-vercel-ip-country`, Cloudflare `CF-IPCountry`), or set
+  `VITE_GEO_ENDPOINT` to a URL returning `{ "country_code": "RW" }`.
+- **Per-country content** today is the same 38-story snapshot, re-ordered. Real country editions
+  need the CMS to accept the country code and return stories for it.
+- **Language**: `src/lib/translate.ts` loads Google's website translator only when a reader picks a
+  language. It is machine translation, labelled as such on screen, with a one-tap way back to English.
+
+## Phones first
+
+Below 1024px the utility row is replaced by a bottom tab bar (Home, Brief, Live, Offers, Saved),
+the front-page stage is shortened, section stats sit in one row, topic filters scroll sideways,
+and the anchor advert is a single slim row above the tab bar. Checked from 320px to 768px.
 
 ## Loading states
 
@@ -81,6 +128,6 @@ Every slot has a solid "Advertisement" (or "Sponsored") tag, names who paid, and
 Each of these says so on screen:
 
 - **Live feeds**: `src/live/feed.ts` simulates the provider. Replace `connect()` with the real subscription.
-- **Ad server**: `Creative` in `components/ads/AdSlot.tsx` renders placeholder sponsors. Replace it with the ad-server render.
+- **Ad server and offers**: advertisers, fares and prices in `src/data/offers.ts` are placeholders. Replace with the ad server and partner feeds.
 - **Email sign-up and corrections form**: validate only; nothing is sent.
 - **Exchange rates, legal pages**: waiting on a provider and legal review.

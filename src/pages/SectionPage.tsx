@@ -50,8 +50,8 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
         title={cat.name}
         intro={cat.blurb}
         aside={
-          <div className="flex flex-col items-start gap-5 lg:items-end">
-            <dl className="flex flex-wrap gap-x-9 gap-y-4">
+          <div className="flex w-full flex-col gap-4 lg:w-auto lg:items-end lg:gap-5">
+            <dl className="grid grid-cols-4 border-y border-rule-dark py-3 lg:flex lg:gap-x-9 lg:border-0 lg:py-0">
               {[
                 ['Stories', all.length],
                 ['Confirmed', confirmed],
@@ -59,15 +59,15 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
                 ['Latest', all[0] ? storyDate(all[0]) : '—'],
               ].map(([t, v]) => (
                 <div key={t}>
-                  <dt className="text-[13px] text-mirror">{t}</dt>
-                  <dd className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums">{v}</dd>
+                  <dt className="text-[12px] text-mirror sm:text-[13px]">{t}</dt>
+                  <dd className="whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums sm:text-[26px]">{v}</dd>
                 </div>
               ))}
             </dl>
             <Button
               variant={following ? 'solid' : 'line'}
               aria-pressed={following}
-              className="text-white aria-pressed:border-signal aria-pressed:bg-signal aria-pressed:text-ink hover:bg-white/10"
+              className="w-full text-white aria-pressed:border-signal aria-pressed:bg-signal aria-pressed:text-ink hover:bg-white/10 lg:w-auto"
               onClick={() => {
                 toggleFollow(id)
                 toast(following ? `Stopped following ${cat.name}` : `Following ${cat.name}. It now leads your front page.`)
@@ -79,14 +79,14 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
       />
       <Container>
 
-      <div className="grid grid-cols-2 border-b border-b-rule lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-4 border-b border-b-rule sm:grid-cols-4">
         {KEY_FIGURES[id].map(([value, caption, storyId]) => (
           <Link
             key={value + caption}
             to={storyPath(storyId)}
-            className="group block border-b border-rule pb-6 pr-6 pt-[22px] lg:mr-6 lg:border-b-0 lg:border-r lg:last:mr-0 lg:last:border-r-0"
+            className="group block border-b border-rule pb-4 pt-4 sm:border-b-0 lg:mr-6 lg:border-r lg:pb-6 lg:pr-6 lg:pt-[22px] lg:last:mr-0 lg:last:border-r-0"
           >
-            <b className="block text-[32px] font-extrabold leading-none tracking-[-0.04em] tabular-nums transition-colors duration-150 group-hover:text-signal sm:text-[40px]">
+            <b className="block text-[28px] font-extrabold leading-none tracking-[-0.04em] tabular-nums transition-colors duration-150 group-hover:text-signal lg:text-[40px]">
               {value}
             </b>
             <span className="mt-2 block max-w-[26ch] text-sm text-muted">{caption}</span>
@@ -94,8 +94,8 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
         ))}
       </div>
 
-      <div className="z-[5] flex flex-wrap items-center justify-between gap-5 border-b border-rule bg-white py-[22px] lg:sticky lg:top-[68px]">
-        <div role="tablist" aria-label={`Topics in ${cat.name}`} className="flex flex-wrap gap-2">
+      <div className="sticky top-[96px] z-[5] -mx-[18px] flex items-center justify-between gap-3 border-b border-rule bg-white px-[18px] py-2.5 sm:-mx-6 sm:px-6 lg:top-[68px] lg:mx-0 lg:flex-wrap lg:gap-5 lg:px-0 lg:py-[22px]">
+        <div role="tablist" aria-label={`Topics in ${cat.name}`} className="no-scrollbar flex min-w-0 gap-2 overflow-x-auto lg:flex-wrap">
           {topics.map((t) => (
             <Pill key={t} role="tab" selected={topic === t} onClick={() => setTopic(t)}>
               {t}
@@ -103,8 +103,8 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
             </Pill>
           ))}
         </div>
-        <label className="flex items-center gap-2.5 text-sm text-muted">
-          Order
+        <label className="flex flex-none items-center gap-2.5 text-sm text-muted">
+          <span className="hidden sm:inline">Order</span>
           <select
             value={order}
             onChange={(e) => setOrder(e.target.value as 'new' | 'old')}
@@ -116,7 +116,7 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
         </label>
       </div>
 
-      <div className="grid gap-10 pb-12 pt-11 lg:grid-cols-12 lg:gap-x-8">
+      <div className="grid gap-10 pb-12 pt-7 lg:grid-cols-12 lg:gap-x-8 lg:pt-11">
         <div className="min-w-0 lg:col-span-8">
           {lead && <StoryCard story={lead} size="xl" withViz />}
           {second.length > 0 && (

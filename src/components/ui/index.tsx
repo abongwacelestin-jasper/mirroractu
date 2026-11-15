@@ -2,10 +2,10 @@ import React from 'react'
 import { Link, LinkProps } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
-/** Page-width container: 1296px max, 40/24/18px gutters. */
+/** Page-width container: 1440px max, 40/24/18px gutters. */
 export function Container({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={twMerge('mx-auto w-full max-w-[1296px] px-[18px] sm:px-6 lg:px-10', className)} {...rest}>
+    <div className={twMerge('mx-auto w-full max-w-[1440px] px-[18px] sm:px-6 lg:px-10', className)} {...rest}>
       {children}
     </div>
   )
@@ -90,13 +90,13 @@ export function DeskHeading({ title, to, linkLabel }: { title: string; to?: stri
 export function PageHeader({ title, intro, aside }: { title: string; intro?: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <section className="bg-ink text-white">
-      <Container className="grid items-end gap-8 pb-12 pt-12 lg:grid-cols-[1fr_auto] lg:gap-12 lg:pb-16 lg:pt-20">
+      <Container className="grid items-end gap-6 pb-8 pt-8 lg:grid-cols-[1fr_auto] lg:gap-12 lg:pb-16 lg:pt-20">
         <div className="min-w-0">
-          <h1 className="break-words text-[clamp(52px,10vw,148px)] font-extrabold leading-[0.86] tracking-[-0.05em]">
+          <h1 className="break-words text-[clamp(44px,10vw,148px)] font-extrabold leading-[0.86] tracking-[-0.05em]">
             {title}
             <span className="text-signal">.</span>
           </h1>
-          {intro && <p className="mt-6 max-w-[34em] font-serif text-[23px] leading-[1.25] text-mirror-light sm:text-[28px]">{intro}</p>}
+          {intro && <p className="mt-4 max-w-[34em] font-serif text-[20px] leading-[1.25] text-mirror-light sm:mt-6 sm:text-[28px]">{intro}</p>}
         </div>
         {aside}
       </Container>
