@@ -115,7 +115,7 @@ const TOPICS: [string, string][] = [...SEARCH_TOPICS, ['Elections', 'election'],
 
 /** Right rail: what is being followed most closely now, what is coming, and one advert. */
 export function HappeningRail() {
-  const { openSearch } = useSiteActions()
+  const { openSearch, openTrends } = useSiteActions()
   const topics = TOPICS.map(([label, q]) => [label, q, searchStories(q, 'all').length] as const)
     .filter(([, , n]) => n > 0)
     .slice(0, 7)
@@ -134,6 +134,10 @@ export function HappeningRail() {
             </li>
           ))}
         </ul>
+        <p className="mt-3 flex gap-5 text-[14.5px]">
+          <TextLink to="/trends">All trends</TextLink>
+          <button type="button" onClick={openTrends} className="font-semibold text-muted hover:text-ink">Quick look</button>
+        </p>
       </RailBlock>
 
       <AdSlot format="mpu" slot={1} placement="the front page, right-hand column" />

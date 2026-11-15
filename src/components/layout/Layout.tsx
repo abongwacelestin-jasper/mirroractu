@@ -17,6 +17,7 @@ import { TabBar } from '@/components/layout/TabBar'
 import { CookieConsent, CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
 import { EditionModal, TranslationBar } from '@/components/overlays/EditionModal'
 import { HousePromo } from '@/components/overlays/HousePromo'
+import { TrendsModal } from '@/components/overlays/TrendsModal'
 import { SearchDialog } from '@/components/layout/SearchDialog'
 import { ToastProvider } from '@/components/overlays/Toast'
 
@@ -27,6 +28,9 @@ import { ToastProvider } from '@/components/overlays/Toast'
 const SPLASH_MS = 900
 const ROUTE_MS = 420
 const WELCOME_AFTER_MS = 1500
+/** Today's trends offers itself once a day, a little after arrival. */
+const TRENDS_AFTER_MS = 12000
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Pages that carry no advertising: the standards and legal pages. */
 const AD_FREE = ['/how-we-work', '/legal']
@@ -45,6 +49,8 @@ export function Layout() {
   const [newsletter, setNewsletter] = useState(false)
   const [welcome, setWelcome] = useState(false)
   const [edition, setEdition] = useState(false)
+  const [trends, setTrends] = useState(false)
+  const [trendsSeen, setTrendsSeen] = useStoredValue('ma-trends-seen', '0')
   const [welcomeSeen, setWelcomeSeen] = useStoredValue('ma-welcome-seen', '')
   const [cookieSettings, setCookieSettings] = useState(false)
   const [adInfo, setAdInfo] = useState<AdInfo | null>(null)
@@ -59,6 +65,7 @@ export function Layout() {
       openNewsletter: () => setNewsletter(true),
       openWelcome: () => setWelcome(true),
       openEdition: () => setEdition(true),
+      openTrends: () => setTrends(true),
       openCookieSettings: () => setCookieSettings(true),
       openAdInfo: setAdInfo,
       openCorrection: (storyTitle) => setCorrection({ open: true, storyTitle }),
@@ -95,6 +102,13 @@ export function Layout() {
     const t = window.setTimeout(() => setWelcome(true), WELCOME_AFTER_MS)
     return () => window.clearTimeout(t)
   }, [welcomeSeen, consent, preview])
+
+  useEffect(() => {
+    const rested = Date.now() - Number(trendsSeen) > DAY_MS
+    if (!welcomeSeen || welcome || !consent || !rested || preview !== 'live' || pathname === '/trends') return
+    const t = window.setTimeout(() => setTrends(true), TRENDS_AFTER_MS)
+    return () => window.clearTimeout(t)
+  }, [welcomeSeen, welcome, consent, trendsSeen, preview, pathname])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -160,13 +174,20 @@ export function Layout() {
               setWelcomeSeen('1')
             }}
           />
+          <TrendsModal
+            open={trends}
+            onClose={() => {
+              setTrends(false)
+              setTrendsSeen(String(Date.now()))
+            }}
+          />
           <EditionModal open={edition} onClose={() => setEdition(false)} />
           <AdInfoModal ad={adInfo} onClose={() => setAdInfo(null)} />
           <CorrectionModal open={correction.open} storyTitle={correction.storyTitle} onClose={() => setCorrection((c) => ({ ...c, open: false }))} />
           {preview !== 'splash' && <CookieConsent forceOpen={preview === 'cookies'} settingsOpen={cookieSettings} onSettings={setCookieSettings} />}
           <AnchorAd enabled={popupsAllowed && !isAdFree(pathname)} />
           <LiveAlert enabled={popupsAllowed} />
-          <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition} />
+          <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <TabBar />
         </div>
       </SiteActionsContext.Provider>
@@ -177,6 +198,6 @@ export function Layout() {
 function skeletonFor(path: string): SkeletonKind {
   if (path === '/') return 'home'
   if (path.startsWith('/story/')) return 'story'
-  if (['/brief', '/coming-up', '/live', '/saved', '/how-we-work', '/legal'].includes(path) || path.startsWith('/offers')) return 'page'
+  if (['/brief', '/coming-up', '/live', '/saved', '/how-we-work', '/legal', '/trends', '/search'].includes(path) || path.startsWith('/offers')) return 'page'
   return 'section'
 }

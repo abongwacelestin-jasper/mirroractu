@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bookmark, Home, Newspaper, Radio, Tag } from 'lucide-react'
+import { Bookmark, Home, Newspaper, Radio, TrendingUp } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { NavLink } from 'react-router-dom'
 
@@ -7,9 +7,9 @@ import { useSavedStories } from '@/lib/store'
 
 const TABS = [
   { to: '/', label: 'Home', Icon: Home, end: true },
+  { to: '/trends', label: 'Trends', Icon: TrendingUp },
   { to: '/brief', label: 'Brief', Icon: Newspaper },
   { to: '/live', label: 'Live', Icon: Radio },
-  { to: '/offers', label: 'Offers', Icon: Tag },
   { to: '/saved', label: 'Saved', Icon: Bookmark },
 ]
 

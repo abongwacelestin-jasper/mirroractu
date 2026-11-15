@@ -3,6 +3,7 @@ import { twMerge } from 'tailwind-merge'
 
 import { Story } from '@/data'
 import { VIDEOS, storyMedia } from '@/data/media'
+import { VideoPlayer } from '@/components/media/VideoPlayer'
 import { Viz, VizTone } from './Viz'
 
 /**
@@ -83,11 +84,7 @@ export function StoryVideo({ storyId, dark = false, className }: { storyId: stri
         <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-signal text-[9px] text-ink">▶</span>
         Video · {v.title}
       </p>
-      <video src={v.src} controls muted playsInline preload="metadata" aria-label={v.alt} className="aspect-video w-full bg-ink" />
-      <figcaption className={twMerge('mt-1.5 text-[11.5px] leading-snug', dark ? 'text-mirror' : 'text-muted')}>
-        {v.alt}. Data to 2022.{' '}
-        <a href={v.page} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{v.credit}, {v.licence}</a>
-      </figcaption>
+      <VideoPlayer video={v} dark={dark} />
     </figure>
   )
 }

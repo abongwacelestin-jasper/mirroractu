@@ -21,12 +21,13 @@ export const MEDIA: Record<string, Media> = MEDIA_LIST
 
 export const storyMedia = (storyId: string): Media | undefined => MEDIA[storyId]
 
-export type Video = Media & { title: string }
+export type Video = Media & { title: string; poster?: string }
 
 /** Videos attached to stories. Public-domain material only. */
 export const VIDEOS: Record<string, Video> = {
   's-cop31': {
     src: '/media/global-temperature-1880-2022.webm',
+    poster: '/media/global-temperature-1880-2022.poster.jpg',
     title: 'How global temperatures have changed since 1880',
     alt: 'World map animation: surface temperature compared with the 1951 to 1980 average, year by year from 1880 to 2022. Blue is cooler, red is warmer',
     credit: 'NASA Scientific Visualization Studio',

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
 import { AdSlot } from '@/components/ads/AdSlot'
@@ -12,15 +12,16 @@ import { StoryImage, StoryVideo } from '@/components/story/StoryImage'
 import { ImageCard, Ledger } from '@/components/story/StoryParts'
 import { Button, Container, Hl, TextLink, buttonClass } from '@/components/ui'
 import { Viz } from '@/components/story/Viz'
-import { STORIES, TIERS, VIZ, categoryName, formatDate, getStory, newestFirst, sectionPath, storyPath } from '@/data'
+import { STORIES, TIERS, VIZ, categoryName, formatDate, newestFirst, resolveStory, sectionPath, storyPath } from '@/data'
 import { useWire } from '@/live/feed'
 import { useReadStories, useSavedStories, useTextSize } from '@/lib/store'
 import { SideBlock } from '@/pages/SectionPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export function StoryPage() {
-  const { storyId } = useParams()
-  const story = getStory(storyId)
+  const { storyId: param } = useParams()
+  const { story, canonical } = resolveStory(param)
+  const storyId = story?.id
   const [saved, toggleSaved] = useSavedStories()
   const [size, setSize] = useTextSize()
   const [shareOpen, setShareOpen] = useState(false)
@@ -46,6 +47,8 @@ export function StoryPage() {
   }, [storyId])
 
   if (!story) return <NotFoundPage />
+  // An old id link (/story/s-cop31) moves to the readable address.
+  if (!canonical) return <Navigate to={storyPath(story.id)} replace />
 
   const section = story.cats[0]
   const sectionName = categoryName(section)

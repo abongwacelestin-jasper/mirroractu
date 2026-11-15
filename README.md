@@ -33,6 +33,8 @@ src/
     ads/                   AdSlot, AnchorAd, AdInfoModal, AdTag
     live/                  LiveFeed (LiveBar, LiveWire, MarketTicker, LiveAlert), LiveHub (data modules)
     overlays/              Modal, Popups (cookies, welcome, newsletter, correction), HousePromo, Toast, CorrectionForm
+    search/                SearchPanel (shared by the search dialog and /search)
+    media/                 VideoPlayer (poster, play, optional Google pre-roll)
     feed/                  Feed (For you / Following / Latest, new-updates prompt, endless scroll),
                            FeedCard, Rails (your edition, desks to follow, happening now)
     story/                 StoryParts (cards, rows, Confirmed / Still open ledger), Viz (charts),
@@ -41,12 +43,15 @@ src/
   data/
     index.ts               typed data access and helpers: the seam to swap for a CMS / API
     snapshot.ts            the 15 Nov 2026 story snapshot
+    trends.ts              trending subjects and trending videos
     countries.ts           editions, time-zone map, which countries each story is about
     offers.ts              advertisers and their offers, by category (flights, stays, events, banking)
     media.ts               photos and videos per story; media.generated.ts holds the credit list
   live/
     feed.ts                live feed store (wire + market quotes): the seam to swap for websockets
   lib/
+    search.ts              search index, scoring, filters and search URLs
+    google.ts              Google AdSense and IMA video adverts, switched on by env variables
     edition.ts             the reader's country edition (choice, geo lookup, time zone)
     translate.ts           on-demand Google translation of the page
     store.ts               saved stories, followed desks, read history, text size, consent (localStorage)
@@ -65,12 +70,14 @@ Imports use the `@/` alias for `src/`, e.g. `import { AdSlot } from '@/component
 |---|---|
 | `/` | Front page |
 | `/:sectionId` | Section: `world`, `africa`, `business`, `tech`, `climate`, `health`, `culture`, `sport` |
-| `/story/:storyId` | Story, e.g. `/story/s-cop31` |
+| `/story/:slug` | Story, e.g. `/story/cop31-opens-in-antalya-as-scientists-warn-of-a-1-5-c-overshoot`. Old id links (`/story/s-cop31`) redirect to the slug |
 | `/brief` | The Brief |
 | `/coming-up` | Calendar |
 | `/live` | Live data |
 | `/saved` | Saved stories (stored in localStorage) |
 | `/how-we-work` | Standards: `#about`, `#pipeline`, `#tiers`, `#sources`, `#ai`, `#corrections`, `#advertising`, `#live-data`, `#faq`, `#status` |
+| `/trends` | Today's trends and video trends. `?v=<video id>#video` opens on a video |
+| `/search` | Search results. The address is the search: `?q=cop31&desk=climate&type=videos&from=2026-11-01&sort=newest&open=1` |
 | `/offers`, `/offers/:category` | Advertiser offers: `flights`, `stays`, `events`, `banking`. Adverts link here |
 | `/legal` | Legal and contact status, picture credits at `#credits` |
 
@@ -91,6 +98,27 @@ Photos are freely licensed file photos from Wikimedia Commons (public domain, CC
 stored in `public/media`. Each is captioned "File photo" with its credit and licence, and all are
 listed at `/legal#credits`. The video is a public-domain NASA visualisation. To add or change one,
 edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
+
+## Trends, video and Google adverts
+
+- **Trends** (`/trends`, `src/live/trends.ts`): subjects ranked by stories filed plus live wire activity. It is
+  coverage, not audience data: there is no analytics behind it yet. A centred popup offers the top five once a day.
+- **Video trends**: public-domain and Creative Commons footage in `public/media`, listed in `src/data/trends.ts`.
+- **Google video adverts**: `VideoPlayer` runs one pre-roll through Google's IMA SDK when `VITE_IMA_AD_TAG` is set.
+  `npm run dev` uses Google's public *sample* tag (`.env.development`) so it can be seen working; it earns nothing.
+  For production put your own Google Ad Manager tag in the host's environment settings.
+- **Google display adverts**: set `VITE_ADSENSE_CLIENT` and the four `VITE_ADSENSE_SLOT_*` ids (see `.env.example`)
+  and every ad slot is filled by AdSense instead of the placeholder creatives.
+- **Consent**: nothing from Google loads before the reader's cookie choice; without advertising consent, adverts
+  are requested as non-personalised. If Google's script is blocked, the video just plays and slots fall back.
+
+## Search and addresses
+
+- **Search** (`src/lib/search.ts`, `components/search/SearchPanel.tsx`): one index over stories, photos, videos,
+  topics, desks, dates and offers, plus live wire matches. Results update on every keystroke, with type tabs,
+  desk / date / order filters, voice input where the browser supports it, recent searches and arrow-key navigation.
+  The dialog (press `/`) and the `/search` page share the same panel.
+- **Slugs**: story addresses come from `slugify()` in `src/data/index.ts`; ids never appear in links.
 
 ## Country editions and language
 

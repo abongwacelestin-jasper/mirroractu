@@ -49,6 +49,7 @@ export function Footer({ formRef, onSearch, onTop }: Props) {
             ))}
           </Column>
           <Column title="Read">
+            <li><FootLink to="/trends">Today’s trends</FootLink></li>
             <li><FootLink to="/brief">The Brief</FootLink></li>
             <li><FootLink to="/coming-up">Coming up</FootLink></li>
             <li><FootLink to="/live">Live data</FootLink></li>

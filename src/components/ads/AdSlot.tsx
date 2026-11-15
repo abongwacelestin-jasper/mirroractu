@@ -5,6 +5,7 @@ import { twMerge } from 'tailwind-merge'
 
 import { ADVERTISERS, Advertiser, offersPath } from '@/data/offers'
 import { AdInfo, useSiteActions } from '@/lib/actions'
+import { ADSENSE_CLIENT, ADSENSE_SLOTS, loadAdSense, requestAdSenseFill } from '@/lib/google'
 import { useStoredValue } from '@/lib/store'
 import { Bone } from '@/components/loading/Loading'
 import { Modal } from '@/components/overlays/Modal'
@@ -85,6 +86,9 @@ export function AdSlot({
   const [ref, near] = useNearViewport<HTMLElement>()
   const [loaded, setLoaded] = useState(false)
   const [hidden, setHidden] = useState(false)
+  const [consent] = useStoredValue('ma-consent', '')
+  // Google fills this slot when AdSense is configured and the reader has made a cookie choice.
+  const google = !!ADSENSE_CLIENT && !!ADSENSE_SLOTS[format] && !!consent
 
   useEffect(() => {
     if (!near) return
@@ -108,11 +112,11 @@ export function AdSlot({
       <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <AdTag>{spec.tag}</AdTag>
         <span className="text-[12.5px] text-muted">
-          Paid for by <b className="font-semibold text-ink">{ad.name}</b>
+          {google ? <>Ads by <b className="font-semibold text-ink">Google</b></> : <>Paid for by <b className="font-semibold text-ink">{ad.name}</b></>}
         </span>
         <button
           type="button"
-          onClick={() => openAdInfo({ sponsor: ad.name, format: spec.name, size: spec.size, placement, onHide: () => setHidden(true) })}
+          onClick={() => openAdInfo({ sponsor: google ? 'An advertiser chosen by Google' : ad.name, format: spec.name, size: spec.size, placement, onHide: () => setHidden(true) })}
           className="ml-auto flex flex-none items-center gap-1.5 whitespace-nowrap text-[12.5px] font-semibold text-muted transition-colors duration-150 hover:text-ink"
         >
           <span aria-hidden="true" className="flex size-4 items-center justify-center rounded-full border border-current font-serif text-[11px] italic leading-none">i</span>
@@ -120,7 +124,9 @@ export function AdSlot({
         </button>
       </div>
 
-      {loaded ? (
+      {loaded && google ? (
+        <GoogleAd format={format} personalised={consent === 'all'} fallback={<Creative ad={ad} format={format} />} />
+      ) : loaded ? (
         <Creative ad={ad} format={format} />
       ) : (
         <div role="status" aria-label="Advert loading" className={twMerge('relative w-full', spec.minH)}>
@@ -136,6 +142,31 @@ export function AdSlot({
         <Link to="/how-we-work#advertising" className="underline underline-offset-2 hover:text-ink">Our advertising rules</Link>
       </p>
     </aside>
+  )
+}
+
+/** A Google AdSense unit. Falls back to the house creative if Google's script is blocked. */
+function GoogleAd({ format, personalised, fallback }: { format: AdFormat; personalised: boolean; fallback: React.ReactNode }) {
+  const [blocked, setBlocked] = useState(false)
+  const pushed = useRef(false)
+  useEffect(() => {
+    if (pushed.current) return
+    pushed.current = true
+    loadAdSense()
+      .then(() => requestAdSenseFill(personalised))
+      .catch(() => setBlocked(true))
+  }, [personalised])
+  if (blocked) return <>{fallback}</>
+  return (
+    <div className={twMerge('w-full overflow-hidden', AD_FORMATS[format].minH)}>
+      <ins
+        className="adsbygoogle block"
+        data-ad-client={ADSENSE_CLIENT}
+        data-ad-slot={ADSENSE_SLOTS[format]}
+        data-ad-format={format === 'infeed' ? 'fluid' : 'auto'}
+        data-full-width-responsive="true"
+      />
+    </div>
   )
 }
 

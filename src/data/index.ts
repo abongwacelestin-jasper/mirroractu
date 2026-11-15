@@ -79,7 +79,47 @@ export const storyDate = (s: Story, withYear = false) => s.dl || formatDate(s.d,
 export const newestFirst = (list: Story[]) => [...list].sort((a, b) => b.d.localeCompare(a.d))
 export const storiesIn = (c: CategoryId) => newestFirst(STORIES.filter((s) => s.cats.includes(c)))
 
-export const storyPath = (id: string) => `/story/${id}`
+/* ---------- URLs ----------
+   Story addresses are readable slugs made from the headline:
+     /story/cop31-opens-in-antalya-as-scientists-warn-of-a-1-5c-overshoot
+   Internal ids ("s-cop31") never appear in links. An old id link still works and is redirected
+   to the slug, so nothing shared earlier breaks. When a CMS is connected, store the slug with the
+   story (so a later headline edit does not move the page) and return it from `storySlug`. */
+
+/** "COP31 opens in Antalya…" → "cop31-opens-in-antalya". Accents folded, max 72 characters, cut at a word. */
+export function slugify(text: string) {
+  const base = text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’'‘]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  if (base.length <= 72) return base
+  const cut = base.slice(0, 72)
+  return cut.slice(0, cut.lastIndexOf('-'))
+}
+
+const SLUG_BY_ID = new Map<string, string>()
+const ID_BY_SLUG = new Map<string, string>()
+for (const s of STORIES) {
+  let slug = slugify(s.h)
+  // Two stories must never share an address.
+  if (ID_BY_SLUG.has(slug)) slug = `${slug}-${s.id.replace(/^s-/, '')}`
+  SLUG_BY_ID.set(s.id, slug)
+  ID_BY_SLUG.set(slug, s.id)
+}
+
+export const storySlug = (id: string) => SLUG_BY_ID.get(id) ?? id
+export const storyPath = (id: string) => `/story/${storySlug(id)}`
+
+/** Find a story from the last part of its address: a slug, or an old-style id. */
+export function resolveStory(param: string | undefined): { story?: Story; canonical: boolean } {
+  if (!param) return { canonical: false }
+  const bySlug = ID_BY_SLUG.get(param)
+  if (bySlug) return { story: getStory(bySlug), canonical: true }
+  return { story: getStory(param), canonical: false }
+}
 export const sectionPath = (id: CategoryId) => `/${id}`
 
 export function searchStories(query: string, category: CategoryId | 'all') {

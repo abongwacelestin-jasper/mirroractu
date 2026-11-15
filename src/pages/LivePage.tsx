@@ -5,6 +5,7 @@ import { LiveBadge, LiveWire } from '@/components/live/LiveFeed'
 import { LiveHub } from '@/components/live/LiveHub'
 import { StoryVideo } from '@/components/story/StoryImage'
 import { Container, PageHeader, TextLink } from '@/components/ui'
+import { storyPath } from '@/data'
 
 export function LivePage() {
   return (
@@ -32,7 +33,7 @@ export function LivePage() {
             <div className="lg:col-span-4">
               <h2 className="font-serif text-[34px] font-normal leading-[1.05]">The long view</h2>
               <p className="mt-3 text-mirror-light">October 2026 was 1.75°C above the pre-industrial estimate. NASA’s map shows how the world got here, year by year since 1880.</p>
-              <p className="mt-4"><TextLink to="/story/s-cop31" className="text-white">Read the COP31 story</TextLink></p>
+              <p className="mt-4"><TextLink to={storyPath('s-cop31')} className="text-white">Read the COP31 story</TextLink></p>
             </div>
             <StoryVideo storyId="s-cop31" dark className="lg:col-span-8" />
           </div>

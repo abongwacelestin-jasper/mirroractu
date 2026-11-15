@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
-import { CATEGORIES, CategoryId, EDITION_DATE, getStory, sectionPath, storiesIn, storyDate, storyPath } from '@/data'
+import { CATEGORIES, CategoryId, EDITION_DATE, resolveStory, sectionPath, storiesIn, storyDate, storyPath } from '@/data'
 import { useSiteActions } from '@/lib/actions'
 import { useEdition } from '@/lib/edition'
 import { useSavedStories } from '@/lib/store'
@@ -21,7 +21,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
 
   // A story page lights up the nav item of its section.
   const storyMatch = pathname.match(/^\/story\/(.+)$/)
-  const activeSection = storyMatch ? getStory(storyMatch[1])?.cats[0] : pathname.slice(1)
+  const activeSection = storyMatch ? resolveStory(storyMatch[1]).story?.cats[0] : pathname.slice(1)
 
   useEffect(() => setMenu(null), [pathname])
 
@@ -42,6 +42,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
           </span>
           <nav aria-label="Reader tools" className="flex gap-6">
             <Link to="/saved" className="hover:text-white">Saved stories{saved.length ? ` (${saved.length})` : ''}</Link>
+            <Link to="/trends" className="hidden hover:text-white md:inline">Trends</Link>
             <Link to="/brief" className="hidden hover:text-white md:inline">The Brief</Link>
             <Link to="/coming-up" className="hidden hover:text-white md:inline">Coming up</Link>
             <Link to="/live" className="hidden hover:text-white md:inline">Live data</Link>

@@ -14,6 +14,8 @@ export type SiteActions = {
   openWelcome: () => void
   /** Country edition and language picker. */
   openEdition: () => void
+  /** Today's trends popup. */
+  openTrends: () => void
   openCookieSettings: () => void
   openAdInfo: (ad: AdInfo) => void
   /** `storyTitle` ties the report to a story; leave it out for a general report. */
@@ -27,6 +29,7 @@ export const SiteActionsContext = createContext<SiteActions>({
   openNewsletter: noop,
   openWelcome: noop,
   openEdition: noop,
+  openTrends: noop,
   openCookieSettings: noop,
   openAdInfo: noop,
   openCorrection: noop,

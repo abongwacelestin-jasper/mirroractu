@@ -1,6 +1,6 @@
 /**
  * Entry point of the real website. index.html loads this file.
- * Serve with a fallback to index.html so deep links such as /story/s-cop31 load.
+ * Serve with a fallback to index.html so deep links such as /story/<slug> load.
  */
 import React from 'react'
 import { createRoot } from 'react-dom/client'

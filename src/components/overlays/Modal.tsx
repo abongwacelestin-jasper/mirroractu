@@ -15,6 +15,7 @@ export function Modal({
   children,
   className,
   tone = 'light',
+  center = false,
 }: {
   open: boolean
   onClose: () => void
@@ -22,6 +23,8 @@ export function Modal({
   children: React.ReactNode
   className?: string
   tone?: 'light' | 'dark'
+  /** Centre on every screen. By default a dialog is a bottom sheet on phones. */
+  center?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const closeRef = useRef(onClose)
@@ -69,7 +72,7 @@ export function Modal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: EASE }}
           onClick={(e) => e.target === e.currentTarget && onClose()}
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-6"
+          className={twMerge('fixed inset-0 z-[60] flex justify-center bg-ink/60 backdrop-blur-[3px] sm:items-center sm:p-6', center ? 'items-center p-3' : 'items-end p-0')}
         >
           <motion.div
             ref={panel}
