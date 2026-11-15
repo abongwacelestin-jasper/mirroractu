@@ -32,7 +32,7 @@ export function EditionModal({ open, onClose }: { open: boolean; onClose: () => 
           <button type="button" onClick={reset} className="ml-1 font-semibold text-ink underline decoration-signal decoration-2 underline-offset-4">Detect again</button>
         )}
       </p>
-      <div className="mt-4 grid max-h-[38vh] grid-cols-2 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-3" translate="no">
+      <div className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-3" translate="no">
         {COUNTRIES.map((c) => {
           const n = c.code === 'INT' ? 0 : storiesNear(c.code, 99).stories.length
           return (

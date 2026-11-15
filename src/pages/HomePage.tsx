@@ -11,6 +11,7 @@ import { StoryImage } from '@/components/story/StoryImage'
 import { Kicker, Ledger } from '@/components/story/StoryParts'
 import { Container, DeskHeading, Hl, MonoDate, TextLink } from '@/components/ui'
 import { CountUp } from '@/components/ui/CountUp'
+import { StickyRail } from '@/components/ui/StickyRail'
 import { useSiteActions } from '@/lib/actions'
 import { useEdition } from '@/lib/edition'
 import { CATEGORIES, EDITION_DATE, STORIES, getStory, newestFirst, sectionPath, storiesIn, storyPath } from '@/data'
@@ -20,8 +21,6 @@ const RAIL = ['s-agoa', 's-nz']
 // A named story if it is still published, otherwise the newest one.
 const story = (id: string) => getStory(id) ?? newestFirst(STORIES)[0]
 
-/** Sticky side column that scrolls on its own if it is taller than the screen. */
-const railClass = 'no-scrollbar sticky top-[92px] max-h-[calc(100vh-108px)] overflow-y-auto'
 
 export function HomePage() {
   const lead = story(LEAD)
@@ -100,7 +99,7 @@ export function HomePage() {
       {/* The feed: your corner on the left, the stories in the middle, what is happening on the right */}
       <Container className="grid gap-x-10 pb-14 pt-5 lg:grid-cols-[minmax(0,1fr)_330px] xl:grid-cols-[260px_minmax(0,1fr)_340px]">
         <aside aria-label="Your edition" className="hidden xl:block">
-          <div className={railClass}><YourRail /></div>
+          <StickyRail offset={92}><YourRail /></StickyRail>
         </aside>
         <div className="min-w-0">
           <NearYou />
@@ -108,7 +107,7 @@ export function HomePage() {
           <Feed />
         </div>
         <aside aria-label="Happening now" className="mt-10 lg:mt-0">
-          <div className="no-scrollbar lg:sticky lg:top-[92px] lg:max-h-[calc(100vh-108px)] lg:overflow-y-auto"><HappeningRail /></div>
+          <StickyRail offset={92} from={1024}><HappeningRail /></StickyRail>
         </aside>
       </Container>
 

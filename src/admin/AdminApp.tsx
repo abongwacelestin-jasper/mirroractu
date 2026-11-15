@@ -9,6 +9,7 @@ import { CATEGORIES, CategoryId, EDITION_DATE } from '@/data'
 import { ApiError, api } from '@/lib/api'
 import { dismissBoot } from '@/lib/boot'
 import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/feed'
+import { StickyRail } from '@/components/ui/StickyRail'
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
 import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire } from './views'
 
@@ -130,7 +131,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const navList = (onDark: boolean) => (
     <nav aria-label="Dashboard">
       {groups.map((g) => (
-        <div key={g.group} className="mb-5">
+        <div key={g.group} className="mb-3.5">
           <p className={twMerge('mb-1.5 px-3 font-mono text-[10.5px] uppercase tracking-[0.14em]', onDark ? 'text-mirror/70' : 'text-muted')}>{g.group}</p>
           {g.items.map(({ id, label, Icon }) => {
             const active = current.id === id
@@ -140,7 +141,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
                 to={`/admin/${id}`}
                 aria-current={active ? 'page' : undefined}
                 className={twMerge(
-                  'relative flex items-center gap-3 px-3 py-2.5 text-[14.5px] font-medium transition-colors duration-150',
+                  'relative flex items-center gap-3 px-3 py-2 text-[14.5px] font-medium transition-colors duration-150',
                   onDark ? (active ? 'bg-white/10 text-white' : 'text-mirror-light hover:bg-white/5 hover:text-white') : active ? 'bg-ink text-white' : 'text-ink hover:bg-ink/5'
                 )}
               >
@@ -175,13 +176,13 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     <AdminContext.Provider value={{ user, overview, corrections, reload }}>
       <div className="min-h-[100dvh] bg-paper font-display text-ink lg:grid lg:grid-cols-[250px_minmax(0,1fr)]" translate="no">
         {/* Navigation: a fixed column from 1024px */}
-        <aside className="sticky top-0 hidden h-[100dvh] flex-col bg-ink text-white lg:flex">
+        <aside className="sticky top-0 hidden h-[100dvh] flex-col overflow-hidden bg-ink text-white lg:flex">
           <Link to="/admin/overview" className="flex items-center gap-2.5 px-5 pb-1 pt-5">
             <Logo className="size-8" />
             <span className="text-[21px] font-extrabold tracking-[-0.035em]">Mirror<b className="font-extrabold text-signal">Actu</b></span>
           </Link>
           <p className="px-5 pb-5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">Newsroom dashboard</p>
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2">{navList(true)}</div>
+          <div className="min-h-0 flex-1 px-2">{navList(true)}</div>
           <Link to="/" className="mx-3 mb-3 flex items-center justify-center gap-2 rounded-full border border-rule-dark py-2 text-[13.5px] font-semibold text-mirror-light transition-colors hover:border-white hover:text-white">
             <ExternalLink className="size-4" /> View the site
           </Link>
@@ -220,7 +221,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
 
             {/* The Now rail: a fixed column from 1280px */}
             <aside aria-label="Now" className="hidden border-l border-rule xl:block">
-              <div className="no-scrollbar sticky top-[61px] h-[calc(100dvh-61px)] overflow-y-auto p-5"><NowRail /></div>
+              <StickyRail offset={61} className="p-5"><NowRail /></StickyRail>
             </aside>
           </div>
         </div>
@@ -277,7 +278,7 @@ function LiveDot() {
 
 function RailBlock({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="mb-6">
+    <section className="mb-5 last:mb-0">
       <div className="mb-2 flex items-center justify-between gap-3 border-t-2 border-ink pt-2.5">
         <h3 className="text-[14.5px] tracking-normal">{title}</h3>
         {action}
@@ -294,7 +295,7 @@ function RailBlock({ title, action, children }: { title: string; action?: React.
  */
 function NowRail() {
   const { overview, corrections, reload } = useAdmin()
-  const { items, status } = useWire({ max: 6 })
+  const { items, status } = useWire({ max: 4 })
   const source = useWireSource()
   const [text, setText] = useState('')
   const [cat, setCat] = useState<CategoryId>('world')
@@ -340,7 +341,7 @@ function NowRail() {
               <span className="pt-0.5 font-mono text-[11px] tabular-nums text-muted">{w.time}</span>
               <span>
                 <span className={twMerge('block text-[11.5px] font-semibold', w.kind === 'confirmed' ? 'text-[#a8300f]' : 'text-muted')}>{w.desk} · {WIRE_KIND_LABEL[w.kind]}</span>
-                <span className="leading-snug">{w.text}</span>
+                <span className="line-clamp-2 leading-snug">{w.text}</span>
               </span>
             </li>
           ))}
@@ -369,7 +370,7 @@ function NowRail() {
 
       <RailBlock title="Today’s trends">
         <ol>
-          {(overview?.trends ?? []).slice(0, 5).map((t) => (
+          {(overview?.trends ?? []).slice(0, 4).map((t) => (
             <li key={t.id} className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-baseline gap-2 border-b border-rule py-2 text-[13.5px] last:border-b-0">
               <span className="font-extrabold tabular-nums">{t.rank}</span>
               <span className="truncate">{t.label}</span>
@@ -406,7 +407,7 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="mt-6 lg:mt-0">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">Newsroom dashboard</p>
-          <p className="mt-1.5 font-serif text-[clamp(30px,6vw,64px)] leading-[0.98] tracking-[-0.015em]">
+          <p className="mt-1.5 font-serif text-[clamp(30px,6vw,64px)] leading-[1.12] tracking-[-0.015em]">
             Behind the <em className="text-mirror">mirror</em><span className="text-signal">.</span>
           </p>
           <ul className="mt-6 hidden gap-2.5 text-[15px] text-mirror-light md:grid lg:mt-8">

@@ -47,7 +47,7 @@ export function Overview() {
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3 px-5 pb-5 pt-6 sm:px-7">
           <div className="min-w-0">
             <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">{EDITION_DATE}</p>
-            <p className="mt-1.5 font-serif text-[clamp(30px,4.2vw,48px)] leading-[1] tracking-[-0.01em]">{greeting()}, {user.name.split(' ')[0]}<span className="text-signal">.</span></p>
+            <p className="mt-1.5 font-serif text-[clamp(30px,4.2vw,48px)] leading-[1.15] tracking-[-0.01em]">{greeting()}, {user.name.split(' ')[0]}<span className="text-signal">.</span></p>
             <p className="mt-2 max-w-[52ch] text-[14.5px] text-mirror-light">
               {c.stories} stories are live{c.drafts ? `, ${c.drafts} unpublished` : ''}. {open ? `${open} ${open === 1 ? 'correction is' : 'corrections are'} waiting for an editor.` : 'No corrections are waiting.'}
             </p>
