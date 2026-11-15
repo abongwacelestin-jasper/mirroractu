@@ -72,7 +72,7 @@ export function OffersPage() {
           {advertisers.map((a) => {
             const Icon = ICONS[a.category]
             return (
-              <section key={a.id} id={a.id} aria-label={`Offers from ${a.name}`} className="scroll-mt-40 border border-rule">
+              <section data-reveal key={a.id} id={a.id} aria-label={`Offers from ${a.name}`} className="scroll-mt-40 border border-rule">
                 <div className="flex items-center gap-4 p-5" style={{ background: a.bg, color: a.fg }}>
                   <span className="flex size-11 flex-none items-center justify-center rounded-full border" style={{ borderColor: a.accent, color: a.accent }}>
                     <Icon className="size-5" />

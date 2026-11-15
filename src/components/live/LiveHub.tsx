@@ -81,7 +81,7 @@ export function LeagueTable({ rows = EPL_TABLE, full = true }: { rows?: typeof E
 
 function Tile({ title, children, className, surface }: { title: string; children: React.ReactNode; className?: string; surface: 'white' | 'paper' }) {
   return (
-    <section className={twMerge('flex h-full flex-col gap-4 px-7 py-[26px]', surface === 'white' ? 'bg-white' : 'bg-paper', className)}>
+    <section data-reveal className={twMerge('flex h-full flex-col gap-4 px-7 py-[26px]', surface === 'white' ? 'bg-white' : 'bg-paper', className)}>
       <h3 className="text-[21px]">{title}</h3>
       {children}
     </section>

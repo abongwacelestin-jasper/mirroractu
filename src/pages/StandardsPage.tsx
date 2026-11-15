@@ -4,6 +4,7 @@ import { twMerge } from 'tailwind-merge'
 
 import { AD_FORMATS, AdSlot, AdTag } from '@/components/ads/AdSlot'
 import { Freshness } from '@/components/live/LiveHub'
+import { CountUp } from '@/components/ui/CountUp'
 import { Button, ButtonLink, Container, Hl, PageHeader, TextLink } from '@/components/ui'
 import { useSiteActions } from '@/lib/actions'
 import { STORIES, Story, Tier, newestFirst, storyPath } from '@/data'
@@ -153,7 +154,7 @@ export function StandardsPage() {
             ].map(([t, v]) => (
               <div key={t}>
                 <dt className="text-[13px] text-mirror">{t}</dt>
-                <dd className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums">{v}</dd>
+                <dd className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums"><CountUp value={v as number} /></dd>
               </div>
             ))}
           </dl>
@@ -436,7 +437,7 @@ function useActiveSection(ids: string[]) {
 
 function Block({ n, id, title, lede, children }: { n: number; id: string; title: string; lede?: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-40 pt-12 lg:scroll-mt-20">
+    <section data-reveal id={id} className="scroll-mt-40 pt-12 lg:scroll-mt-20">
       <div className="mb-5 grid items-baseline gap-x-4 sm:grid-cols-[34px_1fr]">
         <span aria-hidden="true" className="font-mono text-xs tabular-nums text-signal">{String(n).padStart(2, '0')}</span>
         <div>

@@ -8,6 +8,7 @@ import { useSiteActions } from '@/lib/actions'
 import { useEdition } from '@/lib/edition'
 import { useSavedStories } from '@/lib/store'
 import { Logo } from '@/components/brand/Logo'
+import { LanguageMenu } from '@/components/layout/LanguageMenu'
 import { Container, Hl, MonoDate, TextLink, buttonClass } from '@/components/ui'
 
 export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSubscribe: () => void }) {
@@ -36,7 +37,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
           <span className="hidden sm:inline">
             {EDITION_DATE}
             <button type="button" onClick={openEdition} className="ml-4 font-semibold text-mirror-light hover:text-white">
-              {country.name} edition · Language ▾
+              {country.name} edition ▾
             </button>
           </span>
           <nav aria-label="Reader tools" className="flex gap-6">
@@ -79,7 +80,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
             ))}
           </ul>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <button
               type="button"
               onClick={onSearch}
@@ -90,15 +91,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
               <span className="hidden xl:inline">Search stories</span>
               <kbd className="ml-auto hidden rounded border border-rule-dark px-1.5 font-mono text-[11px] xl:inline">/</kbd>
             </button>
-            <button
-              type="button"
-              onClick={openEdition}
-              aria-label={`Edition: ${country.name}. Change edition or language`}
-              translate="no"
-              className="flex h-9 items-center rounded-full bg-mirror/12 px-3 text-[12.5px] font-bold tracking-wide text-mirror-light transition-colors duration-150 hover:text-white lg:hidden"
-            >
-              {country.code === 'INT' ? 'INT' : country.code}
-            </button>
+            <LanguageMenu />
             <button type="button" onClick={onSubscribe} className={buttonClass({ size: 'sm', className: 'px-3 text-[13px] max-[389px]:hidden sm:px-[15px] sm:text-sm' })}>
               Subscribe
             </button>

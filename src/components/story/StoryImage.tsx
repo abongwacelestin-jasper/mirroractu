@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { twMerge } from 'tailwind-merge'
 
 import { Story } from '@/data'
@@ -25,18 +25,27 @@ export function StoryImage({
   eager?: boolean
   className?: string
 }) {
+  const [loaded, setLoaded] = useState(false)
   const m = storyMedia(story.id)
   if (!m) return null
   const credit = `${m.credit}, ${m.licence}`
   return (
     <figure className={className}>
-      <div className={twMerge('overflow-hidden bg-paper-2', ratio)}>
+      <div className={twMerge('overflow-hidden bg-paper-2', !loaded && 'shimmer', ratio)}>
         <img
           src={m.src}
           alt={m.alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
-          className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02] motion-reduce:transition-none"
+          onLoad={() => setLoaded(true)}
+          ref={(el) => {
+            // Cached images can finish before React attaches onLoad.
+            if (el?.complete && !loaded) setLoaded(true)
+          }}
+          className={twMerge(
+            'size-full object-cover transition-[opacity,scale,filter] duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none',
+            loaded ? 'opacity-100 blur-0' : 'opacity-0 blur-sm'
+          )}
         />
       </div>
       {caption && (

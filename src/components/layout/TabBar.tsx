@@ -1,5 +1,6 @@
 import React from 'react'
 import { Bookmark, Home, Newspaper, Radio, Tag } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { NavLink } from 'react-router-dom'
 
 import { useSavedStories } from '@/lib/store'
@@ -32,9 +33,9 @@ export function TabBar() {
             >
               {({ isActive }) => (
                 <>
-                  {isActive && <span aria-hidden="true" className="absolute inset-x-[30%] top-0 h-[3px] rounded-b-full bg-signal" />}
+                  {isActive && <motion.span layoutId="tab-bar-mark" aria-hidden="true" transition={{ type: 'spring', stiffness: 500, damping: 38 }} className="absolute inset-x-[30%] top-0 h-[3px] rounded-b-full bg-signal" />}
                   <span className="relative">
-                    <Icon className="size-[21px]" strokeWidth={isActive ? 2.4 : 1.9} />
+                    <Icon key={String(isActive)} className={`size-[21px] ${isActive ? 'pop' : ''}`} strokeWidth={isActive ? 2.4 : 1.9} />
                     {label === 'Saved' && saved.length > 0 && (
                       <span className="absolute -right-2.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-bold leading-4 text-ink">{saved.length}</span>
                     )}

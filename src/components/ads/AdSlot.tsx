@@ -104,7 +104,7 @@ export function AdSlot({
   }
 
   return (
-    <aside ref={ref} aria-label={`${spec.tag}: ${ad.name}`} className={twMerge('w-full border border-rule bg-paper/60 p-2.5', className)}>
+    <aside data-reveal="zoom" ref={ref} aria-label={`${spec.tag}: ${ad.name}`} className={twMerge('w-full border border-rule bg-paper/60 p-2.5', className)}>
       <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <AdTag>{spec.tag}</AdTag>
         <span className="text-[12.5px] text-muted">

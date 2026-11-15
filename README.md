@@ -27,7 +27,7 @@ src/
     HomePage  SectionPage  StoryPage  BriefPage  AgendaPage
     LivePage  SavedPage  StandardsPage  LegalPage  NotFoundPage
   components/
-    layout/                Layout (owns every modal and popup), Masthead, TabBar (phones), Footer, SearchDialog
+    layout/                Layout (owns every modal and popup), Masthead, LanguageMenu, TabBar (phones), Footer, SearchDialog
     brand/                 Logo, AnimatedLogo
     loading/               BrandSplash, PageSkeleton, Bone
     ads/                   AdSlot, AnchorAd, AdInfoModal, AdTag
@@ -52,6 +52,7 @@ src/
     store.ts               saved stories, followed desks, read history, text size, consent (localStorage)
     share.ts               share sheet or copy link
     actions.ts             useSiteActions(): open search, newsletter, cookie settings, advert info, corrections
+    reveal.ts              scroll-reveal observer for `data-reveal` elements
     boot.ts                fades out the index.html splash once the app has mounted
     preview.ts             pins a UI state (splash, skeleton, popup) for tests
 ```
@@ -103,6 +104,18 @@ edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
   need the CMS to accept the country code and return stories for it.
 - **Language**: `src/lib/translate.ts` loads Google's website translator only when a reader picks a
   language. It is machine translation, labelled as such on screen, with a one-tap way back to English.
+
+## Motion
+
+All motion is switched off for readers who ask their device for reduced motion.
+
+- **Scroll reveal**: put `data-reveal` (or `data-reveal="left"` / `"zoom"`) on any element and it fades in the
+  first time it enters the screen, staggered with its neighbours. One observer in `src/lib/reveal.ts` serves every page.
+- **Buttons**: every button gives a little when pressed; solid buttons lift and glow on hover (`styles/index.css`, `buttonClass`).
+- **Feedback**: the heart pops and bursts on Like, the bookmark pops on Save, the tab-bar marker slides between tabs.
+- **Loading**: skeletons shimmer; photos fade in from a blur; page titles rise and the signal axis draws itself.
+- **Numbers**: `CountUp` counts figures up as they come into view; market quotes flash when they change.
+- **Pages** fade in on navigation.
 
 ## Phones first
 

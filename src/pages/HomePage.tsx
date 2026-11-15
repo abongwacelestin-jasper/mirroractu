@@ -10,6 +10,7 @@ import { LiveHub } from '@/components/live/LiveHub'
 import { StoryImage } from '@/components/story/StoryImage'
 import { Kicker, Ledger } from '@/components/story/StoryParts'
 import { Container, DeskHeading, Hl, MonoDate, TextLink } from '@/components/ui'
+import { CountUp } from '@/components/ui/CountUp'
 import { useSiteActions } from '@/lib/actions'
 import { useEdition } from '@/lib/edition'
 import { CATEGORIES, EDITION_DATE, STORIES, Story, getStory, sectionPath, storiesIn, storyPath } from '@/data'
@@ -34,13 +35,14 @@ export function HomePage() {
         <Container className="pt-6 lg:pt-14">
           <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-3 border-b border-rule-dark pb-5 lg:gap-y-5 lg:pb-8">
             <p className="font-serif text-[clamp(46px,10.5vw,160px)] leading-[0.88] tracking-[-0.03em]">
-              Today, <em className="text-mirror">reflected</em>
-              <span className="text-signal">.</span>
+              <span className="rise inline-block">Today,</span>{' '}
+              <em style={{ '--rise-delay': '140ms' } as React.CSSProperties} className="rise inline-block text-mirror">reflected</em>
+              <span style={{ '--rise-delay': '320ms' } as React.CSSProperties} className="rise inline-block text-signal">.</span>
             </p>
             <p className="text-[14px] text-mirror-light lg:max-w-[26ch] lg:pb-2 lg:text-[15px]">
-              <b className="font-semibold text-white">{STORIES.length} stories</b> tracked, with{' '}
-              <b className="font-semibold text-white">{totals.ok} facts confirmed</b> and{' '}
-              <b className="font-semibold text-signal">{totals.open} still open</b>. {EDITION_DATE}.{' '}
+              <b className="font-semibold text-white"><CountUp value={STORIES.length} /> stories</b> tracked, with{' '}
+              <b className="font-semibold text-white"><CountUp value={totals.ok} /> facts confirmed</b> and{' '}
+              <b className="font-semibold text-signal"><CountUp value={totals.open} /> still open</b>. {EDITION_DATE}.{' '}
               <button type="button" onClick={openEdition} className="whitespace-nowrap font-semibold text-white underline decoration-signal decoration-2 underline-offset-4">
                 {country.name} edition
               </button>
@@ -123,7 +125,7 @@ export function HomePage() {
             {CATEGORIES.map((c) => {
               const list = storiesIn(c.id)
               return (
-                <li key={c.id} className="flex min-w-0 flex-col">
+                <li data-reveal key={c.id} className="flex min-w-0 flex-col">
                   <Link to={storyPath(list[0].id)} className="group block">
                     <StoryImage story={list.find((s) => s.cats[0] === c.id) ?? list[0]} caption={false} ratio="aspect-[3/2]" />
                   </Link>

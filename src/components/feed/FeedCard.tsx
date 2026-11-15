@@ -56,7 +56,10 @@ export function StoryActions({
           if (!isLiked) toast('Liked. We will show you more like this.')
         }}
       >
-        <Heart className="size-[18px]" fill={isLiked ? 'currentColor' : 'none'} />
+        <span className="relative flex">
+          {isLiked && <span key="burst" aria-hidden="true" className="burst absolute inset-0 rounded-full border-2 border-signal" />}
+          <Heart key={String(isLiked)} className={twMerge('size-[18px]', isLiked && 'pop')} fill={isLiked ? 'currentColor' : 'none'} />
+        </span>
       </Action>
       <Action
         label={isSaved ? 'Saved' : 'Save'}
@@ -66,7 +69,7 @@ export function StoryActions({
           toast(isSaved ? 'Removed from saved stories' : 'Story saved. Find it under Saved.')
         }}
       >
-        <Bookmark className="size-[18px]" fill={isSaved ? 'currentColor' : 'none'} />
+        <Bookmark key={String(isSaved)} className={twMerge('size-[18px]', isSaved && 'pop')} fill={isSaved ? 'currentColor' : 'none'} />
       </Action>
       <Action label="Share" onClick={() => (onShare ? onShare() : share(story.h, storyPath(story.id)))}>
         <Share2 className="size-[18px]" />
@@ -119,7 +122,7 @@ export function FeedCard({ story }: { story: Story }) {
   const hasMedia = !!storyMedia(story.id) || (!!VIZ[story.id] && VIZ[story.id].k !== 'fig')
 
   return (
-    <article className="border-b border-rule py-5">
+    <article data-reveal className="border-b border-rule py-5">
       <div className="flex items-center gap-2.5">
         <Link to={sectionPath(desk)} aria-label={`${deskName} desk`}><DeskBadge name={deskName} /></Link>
         <div className="min-w-0 flex-1 leading-tight">

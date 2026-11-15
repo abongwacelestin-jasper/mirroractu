@@ -38,7 +38,7 @@ export function StoryCard({
   standfirst?: boolean
 }) {
   return (
-    <Link to={storyPath(story.id)} className="group block">
+    <Link data-reveal to={storyPath(story.id)} className="group block">
       {withViz && (VIZ[story.id] ? <Viz story={story} tone={vizTone} className="mb-[22px]" /> : <StoryImage story={story} linkCredit={false} className="mb-[22px]" />)}
       <Kicker story={story} className="mb-2.5" />
       <h3 className={HEADLINE[size]}>
@@ -129,7 +129,7 @@ export function Ledger({
 /** Picture-led card: photo (or data graphic), kicker and headline. Used in grids of suggestions. */
 export function ImageCard({ story, standfirst = false }: { story: Story; standfirst?: boolean }) {
   return (
-    <Link to={storyPath(story.id)} className="group block">
+    <Link data-reveal="zoom" to={storyPath(story.id)} className="group block">
       {VIZ[story.id] && !hasPhoto(story) ? <Viz story={story} className="mb-3.5" /> : <StoryImage story={story} caption={false} ratio="aspect-[3/2]" className="mb-3.5" />}
       <Kicker story={story} />
       <h3 className="mt-2 text-[20px] leading-[1.18]"><Hl>{story.h}</Hl></h3>

@@ -55,7 +55,7 @@ export function LegalPage() {
             {pictures.map((s) => {
               const m = MEDIA[s.id]
               return (
-                <li key={s.id} className="grid grid-cols-[96px_minmax(0,1fr)] gap-4 border-t border-rule pt-4">
+                <li data-reveal key={s.id} className="grid grid-cols-[96px_minmax(0,1fr)] gap-4 border-t border-rule pt-4">
                   <Link to={storyPath(s.id)} aria-label={s.h}><img src={m.src} alt="" loading="lazy" className="aspect-[3/2] w-full object-cover" /></Link>
                   <div className="text-[13.5px] leading-snug">
                     <p className="font-semibold">{m.alt}</p>

@@ -103,20 +103,20 @@ export function StoryPage() {
 
             {VIZ[story.id] && VIZ[story.id].k !== 'fig' && <Viz story={story} className="mt-9 max-w-[620px]" />}
 
-            <div className="mt-11 border-t-2 border-ink pt-[26px]">
+            <div data-reveal className="mt-11 border-t-2 border-ink pt-[26px]">
               <Ledger confirmed={story.ok} open={story.un} textSize={size} />
             </div>
 
             <StoryVideo storyId={story.id} className="mt-12" />
 
-            <div className="mt-12 border-l-[3px] border-signal pl-[26px]">
+            <div data-reveal="left" className="mt-12 border-l-[3px] border-signal pl-[26px]">
               <h2 className="mb-2 text-[15px] tracking-normal">Why it matters</h2>
               <p className={twMerge('max-w-[26em] font-serif leading-[1.22]', large ? 'text-[30px] sm:text-[35px]' : 'text-[25px] sm:text-[30px]')}>{story.why}</p>
             </div>
 
             <AdSlot format="infeed" slot={0} placement={`the ${sectionName} story page, after “Why it matters”`} className="mt-12" />
 
-            <div className="mt-[52px]">
+            <div data-reveal className="mt-[52px]">
               <h2 className="mb-2 text-[22px]">Sources</h2>
               <ol>
                 {story.src.map(([role, label, url], n) => (
@@ -138,7 +138,7 @@ export function StoryPage() {
             </div>
 
             {upNext.length > 0 && (
-              <section aria-label="Keep reading" className="mt-16 border-t-2 border-ink pt-4">
+              <section data-reveal aria-label="Keep reading" className="mt-16 border-t-2 border-ink pt-4">
                 <div className="mb-6 flex items-baseline justify-between gap-4">
                   <h2 className="text-[28px] font-extrabold tracking-[-0.03em]">Keep reading</h2>
                   <TextLink to={sectionPath(section)} className="text-[14.5px]">All {sectionName}</TextLink>

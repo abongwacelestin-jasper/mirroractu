@@ -7,6 +7,7 @@ import { LiveWire } from '@/components/live/LiveFeed'
 import { useToast } from '@/components/overlays/Toast'
 import { Commodities, Freshness, LeagueTable } from '@/components/live/LiveHub'
 import { StoryCard } from '@/components/story/StoryParts'
+import { CountUp } from '@/components/ui/CountUp'
 import { Button, Container, Hl, MonoDate, PageHeader, Pill, TextLink } from '@/components/ui'
 import { AGENDA, EPL_TABLE, KEY_FIGURES, Tier, getCategory, storiesIn, storyDate, storyPath } from '@/data'
 import { useFollowedSections } from '@/lib/store'
@@ -60,7 +61,7 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
               ].map(([t, v]) => (
                 <div key={t}>
                   <dt className="text-[12px] text-mirror sm:text-[13px]">{t}</dt>
-                  <dd className="whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums sm:text-[26px]">{v}</dd>
+                  <dd className="whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums sm:text-[26px]">{typeof v === 'number' ? <CountUp value={v} /> : v}</dd>
                 </div>
               ))}
             </dl>
@@ -131,7 +132,7 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
                 {more.map((s, i) => (
                   <React.Fragment key={s.id}>
                   {i === 3 && <li className="border-b border-rule py-6"><AdSlot format="infeed" slot={3} placement={`the ${cat.name} story list`} /></li>}
-                  <li className="border-b border-rule">
+                  <li data-reveal className="border-b border-rule">
                     <Link to={storyPath(s.id)} className="group grid items-baseline gap-1.5 py-[22px] sm:grid-cols-[86px_1fr_auto] sm:gap-5">
                       <MonoDate className="text-muted">{storyDate(s)}</MonoDate>
                       <div>
@@ -220,7 +221,7 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
 
 export function SideBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-10">
+    <div data-reveal className="mb-10">
       <h2 className="mb-1.5 border-t-2 border-ink pt-3 text-base tracking-normal">{title}</h2>
       {children}
     </div>

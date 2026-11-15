@@ -131,7 +131,15 @@ export function MarketTicker() {
             <Bone dark className="mt-1.5 h-5 w-24" />
           ) : (
             <>
-              <b className="text-[19px] font-semibold tracking-[-0.01em] transition-colors duration-150 group-hover:text-signal">{formatQuote(q)}</b>
+              <motion.b
+                key={formatQuote(q)}
+                initial={{ color: '#F2B441' }}
+                animate={{ color: '#FFFFFF' }}
+                transition={{ duration: 0.9 }}
+                className="text-[19px] font-semibold tracking-[-0.01em]"
+              >
+                {formatQuote(q)}
+              </motion.b>
               {q.id !== 'temp' && (
                 <em className={twMerge('ml-2 text-[13.5px] not-italic', q.change < 0 ? 'text-mirror-light' : 'text-dew')}>
                   {q.change > 0 ? '+' : '−'}

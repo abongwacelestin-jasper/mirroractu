@@ -17,7 +17,7 @@ export function AgendaPage() {
       <Container className="grid gap-x-10 gap-y-10 pb-12 pt-6 lg:grid-cols-12">
         <ul className="min-w-0 lg:col-span-8">
           {AGENDA.map(([, label, title, cats, id]) => (
-            <li key={title} className="border-t border-rule first:border-t-0">
+            <li data-reveal="left" key={title} className="border-t border-rule first:border-t-0">
               <Link to={storyPath(id)} className="group grid items-baseline gap-1 py-[22px] sm:grid-cols-[130px_1fr_auto] sm:gap-6">
                 <b className="text-[26px] font-semibold tracking-[-0.02em]">{label}</b>
                 <strong className="text-[19px] font-semibold tracking-[-0.01em]"><Hl>{title}</Hl></strong>

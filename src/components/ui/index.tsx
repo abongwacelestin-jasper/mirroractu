@@ -15,10 +15,10 @@ type ButtonStyle = { variant?: 'solid' | 'line'; size?: 'md' | 'sm'; className?:
 
 export function buttonClass({ variant = 'solid', size = 'md', className }: ButtonStyle = {}) {
   return twMerge(
-    'inline-flex items-center justify-center whitespace-nowrap rounded-full border font-semibold transition-colors duration-150 ease-out',
+    'inline-flex items-center justify-center whitespace-nowrap rounded-full border font-semibold transition-[color,background-color,border-color,translate,box-shadow] duration-150 ease-out motion-safe:hover:-translate-y-px',
     size === 'sm' ? 'px-[15px] py-[7px] text-sm' : 'px-5 py-2.5 text-[15px]',
     variant === 'solid'
-      ? 'border-signal bg-signal text-ink hover:bg-signal-hover'
+      ? 'border-signal bg-signal text-ink hover:bg-signal-hover hover:shadow-[0_8px_18px_-8px_rgba(255,90,54,.75)]'
       : 'border-current bg-transparent hover:bg-ink/5 aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-white',
     className
   )
@@ -76,7 +76,7 @@ export function Pill({ selected, className, ...rest }: { selected?: boolean } & 
 /** Section heading with a heavy top rule and an optional link on the right. */
 export function DeskHeading({ title, to, linkLabel }: { title: string; to?: string; linkLabel?: string }) {
   return (
-    <div className="mb-[30px] flex items-baseline justify-between gap-5 border-t-2 border-ink pt-4">
+    <div data-reveal="left" className="mb-[30px] flex items-baseline justify-between gap-5 border-t-2 border-ink pt-4">
       <h2 className="text-[34px] font-extrabold tracking-[-0.035em]">{title}</h2>
       {to && <TextLink to={to} className="text-[14.5px]">{linkLabel}</TextLink>}
     </div>
@@ -92,15 +92,15 @@ export function PageHeader({ title, intro, aside }: { title: string; intro?: Rea
     <section className="bg-ink text-white">
       <Container className="grid items-end gap-6 pb-8 pt-8 lg:grid-cols-[1fr_auto] lg:gap-12 lg:pb-16 lg:pt-20">
         <div className="min-w-0">
-          <h1 className="break-words text-[clamp(44px,10vw,148px)] font-extrabold leading-[0.86] tracking-[-0.05em]">
+          <h1 className="rise break-words text-[clamp(44px,10vw,148px)] font-extrabold leading-[0.86] tracking-[-0.05em]">
             {title}
             <span className="text-signal">.</span>
           </h1>
-          {intro && <p className="mt-4 max-w-[34em] font-serif text-[20px] leading-[1.25] text-mirror-light sm:mt-6 sm:text-[28px]">{intro}</p>}
+          {intro && <p style={{ '--rise-delay': '120ms' } as React.CSSProperties} className="rise mt-4 max-w-[34em] font-serif text-[20px] leading-[1.25] text-mirror-light sm:mt-6 sm:text-[28px]">{intro}</p>}
         </div>
         {aside}
       </Container>
-      <div aria-hidden="true" className="axis-x h-0.5" />
+      <div aria-hidden="true" className="axis-x draw-x h-0.5" />
     </section>
   )
 }

@@ -38,7 +38,7 @@ export function BriefPage() {
             return (
               <React.Fragment key={s.id}>
                 {i === 4 && <li className="border-t border-rule py-6"><AdSlot format="infeed" slot={2} placement="The Brief, between stories four and five" /></li>}
-                <li className="border-t border-rule first:border-t-0">
+                <li data-reveal className="border-t border-rule first:border-t-0">
                   <Link to={storyPath(s.id)} className="group grid grid-cols-[34px_minmax(0,1fr)] gap-x-4 py-7 sm:grid-cols-[44px_minmax(0,1fr)_220px] sm:gap-x-6">
                     <span className={twMerge('font-mono text-[13px] tabular-nums', isRead ? 'text-muted' : 'text-signal')}>{String(i + 1).padStart(2, '0')}</span>
                     <div className="min-w-0">

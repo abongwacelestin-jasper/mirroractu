@@ -46,9 +46,9 @@ export function BrandSplash() {
   )
 }
 
-/** A grey placeholder bar. Pulses gently unless the reader prefers reduced motion. */
+/** A placeholder block. A light band sweeps across it unless the reader prefers reduced motion. */
 export function Bone({ className, dark = false }: { className?: string; dark?: boolean }) {
-  return <div aria-hidden="true" className={twMerge('motion-safe:animate-pulse', dark ? 'bg-ink-2' : 'bg-paper-2', className)} />
+  return <div aria-hidden="true" className={twMerge(dark ? 'shimmer-dark bg-ink-2' : 'shimmer bg-paper-2', className)} />
 }
 
 export type SkeletonKind = 'home' | 'section' | 'story' | 'page'

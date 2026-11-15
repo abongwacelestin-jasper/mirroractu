@@ -1,8 +1,10 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { AdInfo, SiteActions, SiteActionsContext } from '@/lib/actions'
 import { dismissBoot, hasBootSplash } from '@/lib/boot'
+import { initReveal } from '@/lib/reveal'
 import { resumeTranslation } from '@/lib/translate'
 import { usePreviewState } from '@/lib/preview'
 import { useStoredValue } from '@/lib/store'
@@ -67,6 +69,7 @@ export function Layout() {
   useEffect(() => {
     dismissBoot()
     resumeTranslation()
+    initReveal()
     const t = window.setTimeout(() => setBooting(false), SPLASH_MS)
     return () => window.clearTimeout(t)
   }, [])
@@ -130,7 +133,16 @@ export function Layout() {
           />
           <main id="content" tabIndex={-1} className="min-h-[60vh] outline-none" aria-busy={showSkeleton}>
             {/* Pages are code-split: Suspense shows the same skeleton while a page's code downloads. */}
-            {showSkeleton ? skeleton : <Suspense fallback={skeleton}><Outlet /></Suspense>}
+            {showSkeleton ? (
+              skeleton
+            ) : (
+              <Suspense fallback={skeleton}>
+                {/* Opacity only: a transform here would break fixed children such as the reading bar. */}
+                <motion.div key={pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}>
+                  <Outlet />
+                </motion.div>
+              </Suspense>
+            )}
           </main>
           <Footer formRef={footerForm} onSearch={actions.openSearch} onTop={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
 

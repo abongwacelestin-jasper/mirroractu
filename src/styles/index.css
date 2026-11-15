@@ -90,3 +90,112 @@ body {
   background: none !important;
   box-shadow: none !important;
 }
+
+/* ---------- Motion ----------
+   Everything below is switched off for readers who ask for reduced motion. */
+
+@keyframes ma-press {
+  0% { scale: 1; }
+  45% { scale: 0.955; }
+  100% { scale: 1; }
+}
+@keyframes ma-rise {
+  from { opacity: 0; translate: 0 0.35em; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes ma-draw {
+  from { scale: 0 1; }
+  to { scale: 1 1; }
+}
+@keyframes ma-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+@keyframes ma-pop {
+  0% { scale: 1; }
+  35% { scale: 1.45; }
+  60% { scale: 0.9; }
+  100% { scale: 1; }
+}
+@keyframes ma-burst {
+  from { scale: 0.4; opacity: 0.7; }
+  to { scale: 2.4; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Every button and button-like link gives a little under the finger. */
+  button:active:not(:disabled),
+  a[class*='rounded-full']:active {
+    animation: ma-press 0.2s var(--ease-out-strong);
+  }
+
+  /* Scroll reveal: lib/reveal.ts marks elements as they enter the screen. The rule only
+     applies once that script has started, so content is never hidden if it does not run. */
+  html.reveal-on [data-reveal] {
+    opacity: 0;
+    translate: 0 22px;
+    transition:
+      opacity 0.55s var(--ease-out-strong) var(--reveal-delay, 0ms),
+      translate 0.55s var(--ease-out-strong) var(--reveal-delay, 0ms);
+  }
+  html.reveal-on [data-reveal='left'] {
+    translate: -22px 0;
+  }
+  html.reveal-on [data-reveal='zoom'] {
+    translate: 0 0;
+    scale: 0.96;
+    transition:
+      opacity 0.55s var(--ease-out-strong) var(--reveal-delay, 0ms),
+      scale 0.55s var(--ease-out-strong) var(--reveal-delay, 0ms);
+  }
+  html.reveal-on [data-reveal][data-revealed] {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+/* Page titles rise in, and the signal axis under them draws left to right. */
+@utility rise {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: ma-rise 0.6s var(--ease-out-strong) both;
+    animation-delay: var(--rise-delay, 0ms);
+  }
+}
+@utility draw-x {
+  @media (prefers-reduced-motion: no-preference) {
+    transform-origin: left;
+    animation: ma-draw 0.9s var(--ease-out-strong) 0.15s both;
+  }
+}
+/* Skeleton shimmer: a light band sweeps across placeholder blocks. */
+@utility shimmer {
+  @media (prefers-reduced-motion: no-preference) {
+    background-image: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.45) 50%, transparent 70%);
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: ma-shimmer 1.4s linear infinite;
+  }
+}
+@utility shimmer-dark {
+  @media (prefers-reduced-motion: no-preference) {
+    background-image: linear-gradient(100deg, transparent 30%, rgb(174 184 198 / 0.12) 50%, transparent 70%);
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: ma-shimmer 1.4s linear infinite;
+  }
+}
+@utility pop {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: ma-pop 0.45s var(--ease-out-strong);
+  }
+}
+@utility burst {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: ma-burst 0.5s ease-out forwards;
+  }
+}
