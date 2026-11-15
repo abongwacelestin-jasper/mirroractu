@@ -65,11 +65,15 @@ await listenForWire()
 setInterval(() => {
   q('DELETE FROM sessions WHERE expires_at < now()').catch(() => {})
   q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [config.eventsRetentionDays]).catch(() => {})
+  q('DELETE FROM emails WHERE at < now() - make_interval(days => $1)', [config.eventsRetentionDays]).catch(() => {})
+  // A confirmation email nobody answered within 30 days: forget the address.
+  q("DELETE FROM subscribers WHERE status = 'pending' AND confirm_sent_at < now() - interval '30 days'").catch(() => {})
 }, 3600_000).unref()
 
 // '::' accepts both IPv4 and IPv6. Private networks on some hosts (Railway) are IPv6 only.
 await app.listen({ port: config.port, host: '::' })
 console.log(`MirrorActu API listening on :${config.port}`)
+console.log(config.resendApiKey ? `Email: Resend connected, sending as ${config.mailFrom}` : 'Email: not connected (RESEND_API_KEY is not set). Nothing will be sent.')
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, async () => {

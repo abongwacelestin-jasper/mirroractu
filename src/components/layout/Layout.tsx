@@ -20,6 +20,7 @@ import { TabBar } from '@/components/layout/TabBar'
 import { ConsentModal } from '@/components/overlays/ConsentModal'
 import { CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
 import { EditionModal, LanguageOffer, TranslationBar } from '@/components/overlays/EditionModal'
+import { PartnerPromo } from '@/components/overlays/PartnerPromo'
 import { AppStatusBars, InstallPrompt } from '@/components/overlays/AppPrompts'
 import { HousePromo } from '@/components/overlays/HousePromo'
 import { TrendsModal } from '@/components/overlays/TrendsModal'
@@ -39,7 +40,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Pages that carry no advertising: the standards and legal pages. */
 const AD_FREE = ['/how-we-work', '/legal']
-const isAdFree = (path: string) => AD_FREE.includes(path) || path.startsWith('/offers')
+const isAdFree = (path: string) => AD_FREE.includes(path) || path.startsWith('/offers') || path.startsWith('/newsletter')
 
 /**
  * Shell for every route: splash, masthead, live bar, search, the page (or its skeleton), footer,
@@ -142,7 +143,9 @@ export function Layout() {
   return (
     <ToastProvider>
       <SiteActionsContext.Provider value={actions}>
-        <div className="bg-white pb-[calc(60px+env(safe-area-inset-bottom))] font-display text-base text-ink lg:pb-0">
+        <div className="bg-white pb-[calc(60px+env(safe-area-inset-bottom))] pt-[var(--safe-top)] font-display text-base text-ink lg:pb-0">
+          {/* Fills the notch and status-bar area, so the page never shows through behind it as it scrolls. */}
+          <div aria-hidden="true" className="fixed inset-x-0 top-0 z-[57] h-[var(--safe-top)] bg-ink" />
           {showSplash && <BrandSplash />}
           <a href="#content" className="absolute -left-[999px] top-0 z-[99] bg-signal px-3.5 py-2.5 text-ink focus:left-2 focus:top-2">
             Skip to content
@@ -201,6 +204,7 @@ export function Layout() {
           <LiveAlert enabled={popupsAllowed} />
           <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <LanguageOffer enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
+          <PartnerPromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends && !isAdFree(pathname)} />
           <InstallPrompt enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />
           <TabBar />
         </div>

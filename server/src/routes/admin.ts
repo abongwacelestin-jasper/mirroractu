@@ -11,6 +11,10 @@ import { slugify } from '../slug'
 import { addWire } from '../wire'
 import { bump } from '../cache'
 import { activeCountries, globalTrends, trendLevels } from '../trends'
+import { config } from '../config'
+import { deskUrl, mailConfigured, sendLater, sendMail, siteUrl } from '../mail/send'
+import { TEMPLATES, buildEdition, confirmLink, latestStories, ref, sample, sendEdition, unsubscribeLink } from '../mail/service'
+import * as T from '../mail/templates'
 
 const CATS = ['world', 'africa', 'business', 'tech', 'climate', 'health', 'culture', 'sport'] as const
 const line = z.string().trim().min(1).max(600)
@@ -77,6 +81,7 @@ export async function adminRoutes(app: FastifyInstance) {
     await q('DELETE FROM sessions WHERE user_id = $1', [user.id])
     await startSession(reply, user.id, req.headers['user-agent'])
     await audit(user, 'password.changed')
+    sendLater({ to: user.email, kind: 'staff.password', mail: T.passwordChanged({ site: siteUrl() }, deskUrl(), { name: user.name, at: new Date() }) })
     return { ok: true }
   })
 
@@ -180,21 +185,118 @@ export async function adminRoutes(app: FastifyInstance) {
       const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params)
       const body = z.object({ status: z.enum(['open', 'checking', 'corrected', 'no_change']), note: z.string().trim().max(1000).optional() }).safeParse(req.body)
       if (!body.success) return reply.code(400).send(bad(body.error))
-      await q('UPDATE corrections SET status = $2, note = $3, handled_by = $4, handled_at = now() WHERE id = $1', [id, body.data.status, body.data.note ?? null, userOf(req).id])
-      await audit(userOf(req), 'correction.updated', String(id), { status: body.data.status })
-      return { ok: true }
+      const before = await one<{ status: string; email: string | null; story_title: string | null }>('SELECT status, email, story_title FROM corrections WHERE id = $1', [id])
+      if (!before) return reply.code(404).send({ error: 'No such report.' })
+      await q('UPDATE corrections SET status = $2, note = coalesce($3, note), handled_by = $4, handled_at = now() WHERE id = $1', [id, body.data.status, body.data.note || null, userOf(req).id])
+      // The reader is told once, when the report is first closed either way.
+      const closing = (body.data.status === 'corrected' || body.data.status === 'no_change') && before.status !== body.data.status
+      const emailed = closing && !!before.email
+      if (emailed) sendLater({ to: before.email!, kind: `correction.${body.data.status}`, mail: T.correctionOutcome({ site: siteUrl() }, { ref: ref('C', id), storyTitle: before.story_title ?? undefined, outcome: body.data.status as 'corrected' | 'no_change', note: body.data.note || undefined }) })
+      await audit(userOf(req), 'correction.updated', String(id), { status: body.data.status, readerEmailed: emailed })
+      return { ok: true, readerEmailed: emailed }
     })
 
     admin.get('/enquiries', async () => ({ enquiries: await q('SELECT * FROM enquiries ORDER BY created_at DESC LIMIT 200') }))
 
-    admin.get('/subscribers', async () => ({ subscribers: await q('SELECT id, email, status, source, created_at FROM subscribers ORDER BY created_at DESC LIMIT 1000') }))
+    admin.get('/subscribers', async () => ({ subscribers: await q('SELECT id, email, status, source, country, created_at, confirmed_at FROM subscribers ORDER BY created_at DESC LIMIT 1000') }))
 
     admin.get('/subscribers.csv', { preHandler: requireUser('admin') }, async (req, reply) => {
-      const rows = await q('SELECT email, status, source, created_at FROM subscribers ORDER BY created_at')
+      const rows = await q('SELECT email, status, source, country, created_at FROM subscribers ORDER BY created_at')
       await audit(userOf(req), 'subscribers.exported', undefined, { count: rows.length })
       const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
       reply.header('Content-Type', 'text/csv; charset=utf-8').header('Content-Disposition', 'attachment; filename="mirroractu-subscribers.csv"')
-      return ['email,status,source,signed_up', ...rows.map((r) => [r.email, r.status, r.source, new Date(r.created_at).toISOString()].map(cell).join(','))].join('\n')
+      return ['email,status,source,country,signed_up', ...rows.map((r) => [r.email, r.status, r.source, r.country, new Date(r.created_at).toISOString()].map(cell).join(','))].join('\n')
+    })
+
+    /**
+     * Sign-ups from before email was connected were never sent a confirmation. This sends it to
+     * them (50 at a time), once each. Administrators only.
+     */
+    admin.post('/subscribers/confirm-waiting', { preHandler: requireUser('admin'), config: { rateLimit: { max: 6, timeWindow: '1 hour' } } }, async (req, reply) => {
+      if (!mailConfigured()) return reply.code(409).send({ error: 'Email is not connected yet: RESEND_API_KEY is not set on the API.' })
+      const rows = await q<{ id: string; email: string; token: string }>("UPDATE subscribers SET confirm_sent_at = now() WHERE id IN (SELECT id FROM subscribers WHERE status = 'pending' AND confirm_sent_at IS NULL ORDER BY id LIMIT 50) RETURNING id, email, token")
+      for (const r of rows) sendLater({ to: r.email, kind: 'subscribe.confirm', mail: T.confirmSubscription({ site: siteUrl() }, confirmLink(r.token)) })
+      await audit(userOf(req), 'subscribers.confirmation_sent', undefined, { count: rows.length })
+      return { sent: rows.length }
+    })
+
+    /* ---------- Email ---------- */
+
+    /** Whether email is connected, the templates, recent sends and past editions. */
+    admin.get('/mail', async () => {
+      const [counts] = await q(`SELECT
+        (SELECT count(*) FROM subscribers WHERE status = 'confirmed') AS confirmed,
+        (SELECT count(*) FROM subscribers WHERE status = 'pending') AS pending,
+        (SELECT count(*) FROM subscribers WHERE status = 'pending' AND confirm_sent_at IS NULL) AS never_asked,
+        (SELECT count(*) FROM emails WHERE status = 'sent' AND at > now() - interval '7 days') AS sent_week,
+        (SELECT count(*) FROM emails WHERE status = 'failed' AND at > now() - interval '7 days') AS failed_week`)
+      return {
+        configured: mailConfigured(),
+        from: config.mailFrom,
+        fromIsTestSender: !config.mailFromSet,
+        replyTo: config.mailReplyTo || null,
+        postalAddress: config.mailPostalAddress || null,
+        webhook: !!config.resendWebhookSecret,
+        counts: Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, Number(v)])),
+        templates: TEMPLATES.map(([id, name, when]) => ({ id, name, when })),
+        stories: (await latestStories(14)).map((x) => ({ id: x.id, h: x.h, section: x.section })),
+        recent: await q('SELECT id, at, kind, recipient, subject, status, error FROM emails ORDER BY at DESC LIMIT 60'),
+        editions: await q('SELECT n.id, n.subject, n.status, n.recipients, n.delivered, n.failed, n.created_at, u.name AS sent_by FROM newsletters n LEFT JOIN users u ON u.id = n.sent_by ORDER BY n.created_at DESC LIMIT 20'),
+      }
+    })
+
+    const templateId = z.enum(TEMPLATES.map((t) => t[0]) as [string, ...string[]])
+    const editionIn = z.object({ subject: z.string().trim().min(6).max(150), intro: z.string().trim().max(600).optional(), storyIds: z.array(z.string().max(120)).min(1).max(8), country: z.string().max(3).optional() })
+
+    /** Any template with sample details. `assets` makes the logo load inside the dashboard's own preview. */
+    admin.get('/mail/preview/:kind', async (req, reply) => {
+      const p = templateId.safeParse((req.params as any).kind)
+      if (!p.success) return reply.code(404).send({ error: 'No such template.' })
+      return sample(p.data as any, userOf(req), '')
+    })
+
+    /** Send a template, with sample details, to the signed-in person only. */
+    admin.post('/mail/test', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
+      const p = z.object({ kind: templateId }).safeParse(req.body)
+      if (!p.success) return reply.code(400).send({ error: 'No such template.' })
+      const user = userOf(req)
+      const mail = await sample(p.data.kind as any, user)
+      const ok = await sendMail({ to: user.email, kind: `test.${p.data.kind}`, mail: { ...mail, subject: `[Test] ${mail.subject}` } })
+      // Not a 5xx: the web server in front replaces those with its own "API not reachable" message.
+      if (!ok) return reply.code(409).send({ error: mailConfigured() ? 'Resend did not accept the email. The reason is under Sent, in Recent email.' : 'Email is not connected yet: RESEND_API_KEY is not set on the API.' })
+      return { ok: true, to: user.email }
+    })
+
+    admin.post('/newsletter/preview', async (req, reply) => {
+      const body = editionIn.safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      return buildEdition(body.data, body.data.country || null, unsubscribeLink('sample-token'), '')
+    })
+
+    /** The edition as written, to the signed-in person only. */
+    admin.post('/newsletter/test', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
+      const body = editionIn.safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const user = userOf(req)
+      const mail = await buildEdition(body.data, body.data.country || null, unsubscribeLink('sample-token'))
+      const ok = await sendMail({ to: user.email, kind: 'test.newsletter', mail: { ...mail, subject: `[Test] ${mail.subject}` } })
+      // Not a 5xx: the web server in front replaces those with its own "API not reachable" message.
+      if (!ok) return reply.code(409).send({ error: mailConfigured() ? 'Resend did not accept the email. The reason is under Sent, in Recent email.' : 'Email is not connected yet: RESEND_API_KEY is not set on the API.' })
+      return { ok: true, to: user.email }
+    })
+
+    /** Send the edition to every confirmed subscriber. Administrators only; it cannot be recalled. */
+    admin.post('/newsletter/send', { preHandler: requireUser('admin'), config: { rateLimit: { max: 4, timeWindow: '1 hour' } } }, async (req, reply) => {
+      const body = editionIn.safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      if (!mailConfigured()) return reply.code(409).send({ error: 'Email is not connected yet: RESEND_API_KEY is not set on the API.' })
+      if (await one("SELECT 1 FROM newsletters WHERE status = 'sending' AND created_at > now() - interval '30 minutes'")) return reply.code(409).send({ error: 'An edition is still being sent. Wait for it to finish.' })
+      const [{ n }] = await q<{ n: string }>("SELECT count(*) AS n FROM subscribers WHERE status = 'confirmed'")
+      if (Number(n) === 0) return reply.code(409).send({ error: 'Nobody has confirmed their address yet, so there is no one to send to.' })
+      const row = await one<{ id: string }>('INSERT INTO newsletters (subject, intro, story_ids, recipients, sent_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [body.data.subject, body.data.intro || null, body.data.storyIds, Number(n), userOf(req).id])
+      await audit(userOf(req), 'newsletter.sent', String(row!.id), { subject: body.data.subject, recipients: Number(n) })
+      void sendEdition(Number(row!.id), body.data)
+      return reply.code(202).send({ id: Number(row!.id), recipients: Number(n) })
     })
 
     /* Staff and audit: administrators only */
@@ -207,6 +309,8 @@ export async function adminRoutes(app: FastifyInstance) {
       // A password set by someone else is a first password: the new member must replace it.
       const row = await one('INSERT INTO users (email, name, role, password_hash, must_change_password) VALUES ($1, $2, $3, $4, true) RETURNING id', [body.data.email, body.data.name, body.data.role, await hashPassword(body.data.password)])
       await audit(userOf(req), 'user.created', String(row!.id), { email: body.data.email, role: body.data.role })
+      // Tells them where to sign in. The first password is never emailed: the administrator passes it on.
+      sendLater({ to: body.data.email, kind: 'staff.welcome', mail: T.staffWelcome({ site: siteUrl() }, deskUrl(), { name: body.data.name, role: body.data.role, by: userOf(req).name }) })
       return reply.code(201).send({ id: Number(row!.id) })
     })
 

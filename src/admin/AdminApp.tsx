@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { Activity, BarChart3, Eye, EyeOff, ExternalLink, FileText, Inbox, KeyRound, LogOut, Mail, Menu, MoreHorizontal, Plus, Radio, ScrollText, ShieldCheck, Users } from 'lucide-react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { Activity, BarChart3, Eye, EyeOff, ExternalLink, FileText, Inbox, KeyRound, LogOut, Mail, Menu, MoreHorizontal, Plus, Radio, ScrollText, Send, ShieldCheck, Users } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -10,8 +10,8 @@ import { ApiError, api } from '@/lib/api'
 import { dismissBoot } from '@/lib/boot'
 import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/feed'
-import { StickyRail } from '@/components/ui/StickyRail'
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
+import { Email } from './email'
 import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire } from './views'
 
 /**
@@ -41,11 +41,11 @@ type Ctx = { user: User; overview: OverviewData | null; corrections: Correction[
 const AdminContext = createContext<Ctx>(null as unknown as Ctx)
 export const useAdmin = () => useContext(AdminContext)
 
-type TabId = 'overview' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'staff' | 'audit' | 'account'
+type TabId = 'overview' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'email' | 'staff' | 'audit' | 'account'
 type NavItem = { id: TabId; label: string; Icon: typeof BarChart3 }
 const NAV: { group: string; admin?: boolean; items: NavItem[] }[] = [
   { group: 'Newsroom', items: [{ id: 'overview', label: 'Overview', Icon: BarChart3 }, { id: 'stories', label: 'Stories', Icon: FileText }, { id: 'wire', label: 'Live wire', Icon: Radio }] },
-  { group: 'Readers', items: [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'subscribers', label: 'Subscribers', Icon: Mail }] },
+  { group: 'Readers', items: [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'subscribers', label: 'Subscribers', Icon: Mail }, { id: 'email', label: 'Email', Icon: Send }] },
   { group: 'Administration', admin: true, items: [{ id: 'staff', label: 'Staff', Icon: Users }, { id: 'audit', label: 'Audit log', Icon: ScrollText }] },
   { group: 'You', items: [{ id: 'account', label: 'Your account', Icon: KeyRound }] },
 ]
@@ -55,6 +55,7 @@ const TITLES: Record<TabId, [string, string]> = {
   wire: ['Live wire', 'File updates to every open page'],
   inbox: ['Inbox', 'Corrections and enquiries from readers'],
   subscribers: ['Subscribers', 'Morning email sign-ups'],
+  email: ['Email', 'The morning email, and every email we send'],
   staff: ['Staff', 'Who can sign in, and as what'],
   audit: ['Audit log', 'Who changed what, and when'],
   account: ['Your account', 'Password and session'],
@@ -118,10 +119,12 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     const t = window.setInterval(reload, 60000)
     return () => window.clearInterval(t)
   }, [reload, tab])
+  const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
     setMenu(false)
     setRail(false)
     window.scrollTo(0, 0)
+    mainRef.current?.scrollTo(0, 0)
     document.title = `${TITLES[current.id][0]} · MirrorActu dashboard`
   }, [current.id])
 
@@ -177,15 +180,16 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
 
   return (
     <AdminContext.Provider value={{ user, overview, corrections, reload }}>
-      <div className="min-h-[100dvh] bg-paper font-display text-ink lg:grid lg:grid-cols-[250px_minmax(0,1fr)]" translate="no">
-        {/* Navigation: a fixed column from 1024px */}
-        <aside className="sticky top-0 hidden h-[100dvh] flex-col overflow-hidden bg-ink text-white lg:flex">
+      <div className="min-h-[100dvh] bg-paper pt-[var(--safe-top)] font-display text-ink lg:grid lg:h-[100dvh] lg:grid-cols-[250px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden" translate="no">
+        <div aria-hidden="true" className="fixed inset-x-0 top-0 z-[71] h-[var(--safe-top)] bg-ink" />
+        {/* From 1024px the page itself never scrolls: the menu, the page and the Now rail each scroll on their own. */}
+        <aside className="hidden h-full min-h-0 flex-col overflow-hidden bg-ink text-white lg:flex">
           <Link to={adminPath('overview')} className="flex items-center gap-2.5 px-5 pb-1 pt-5">
             <Logo className="size-8" />
             <span className="text-[21px] font-extrabold tracking-[-0.035em]">Mirror<b className="font-extrabold text-signal">Actu</b></span>
           </Link>
           <p className="px-5 pb-5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">Newsroom dashboard</p>
-          <div className="min-h-0 flex-1 px-2">{navList(true)}</div>
+          <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overscroll-contain px-2">{navList(true)}</div>
           {HAS_SITE_LINK && (
             <a href={SITE_URL || '/'} className="mx-3 mb-3 flex items-center justify-center gap-2 rounded-full border border-rule-dark py-2 text-[13.5px] font-semibold text-mirror-light transition-colors hover:border-white hover:text-white">
               <ExternalLink className="size-4" /> View the site
@@ -195,9 +199,9 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
           <p className="px-5 pb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-mirror/60">{VERSION}</p>
         </aside>
 
-        <div className="min-w-0">
+        <div className="min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
           {/* Top bar */}
-          <header className="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur">
+          <header className="sticky top-[var(--safe-top)] z-30 border-b border-rule bg-paper/95 backdrop-blur lg:static lg:flex-none">
             <div className="flex h-[60px] items-center gap-2.5 px-4 sm:gap-3 sm:px-6 lg:px-8">
               <button type="button" onClick={() => setMenu(true)} aria-label="Open menu" className="-ml-2 flex size-10 flex-none items-center justify-center rounded-full hover:bg-ink/5 lg:hidden"><Menu className="size-[22px]" /></button>
               <span className="hidden size-8 flex-none items-center justify-center rounded-full bg-ink min-[380px]:flex lg:hidden"><Logo className="size-5" /></span>
@@ -212,21 +216,22 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
             </div>
           </header>
 
-          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_340px]">
-            <main className="min-w-0 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
+          <div className="lg:min-h-0 lg:flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]">
+            <main ref={mainRef} className="min-w-0 px-4 pb-28 pt-5 sm:px-6 lg:h-full lg:overflow-y-auto lg:overscroll-contain lg:px-8 lg:pb-12 lg:pt-7">
               {current.id === 'overview' && <Overview />}
               {current.id === 'stories' && <Stories />}
               {current.id === 'wire' && <Wire />}
               {current.id === 'inbox' && <InboxView />}
               {current.id === 'subscribers' && <Subscribers />}
+              {current.id === 'email' && <Email />}
               {current.id === 'staff' && <Staff />}
               {current.id === 'audit' && <Audit />}
               {current.id === 'account' && <Account onSignOut={signOut} />}
             </main>
 
             {/* The Now rail: a fixed column from 1280px */}
-            <aside aria-label="Now" className="hidden border-l border-rule xl:block">
-              <StickyRail offset={61} className="p-5"><NowRail /></StickyRail>
+            <aside aria-label="Now" className="scroll-quiet hidden h-full overflow-y-auto overscroll-contain border-l border-rule p-5 xl:block">
+              <NowRail />
             </aside>
           </div>
         </div>
@@ -405,7 +410,7 @@ function NowRail() {
 function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-[100dvh] grid-rows-[auto_1fr] bg-white font-display text-ink lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:grid-rows-1" translate="no">
-      <div className="relative flex flex-col justify-between overflow-hidden bg-ink px-5 py-6 text-white sm:px-10 sm:py-8 lg:px-14 lg:py-12">
+      <div className="relative flex flex-col justify-between overflow-hidden bg-ink px-5 pb-6 pt-[calc(24px+var(--safe-top))] text-white sm:px-10 sm:py-8 lg:px-14 lg:py-12">
         <div className="flex items-center gap-2.5 self-start">
           <AnimatedLogo className="size-9 lg:size-11" />
           <span className="text-[24px] font-extrabold tracking-[-0.035em] lg:text-[30px]">Mirror<b className="font-extrabold text-signal">Actu</b></span>

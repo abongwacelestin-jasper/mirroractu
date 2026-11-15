@@ -8,7 +8,7 @@ This is the full setup: every service, how they connect, and every variable.
 
 ## What you are building
 
-Four services in one Railway project. Two are public, two are private.
+Five services in one Railway project. Two are public, three are private.
 
 ```
                     readers                                  staff
@@ -29,14 +29,17 @@ Four services in one Railway project. Two are public, two are private.
                              │  no public URL  │
                              └────────┬────────┘
                                       │ private network
-                             ┌────────▼────────┐
-                             │ Postgres (priv.)│
-                             └─────────────────┘
+                    ┌─────────────────┴─────────────────┐
+           ┌────────▼────────┐                 ┌────────▼────────┐
+           │ Postgres (priv.)│                 │  Redis (priv.)  │
+           │  the database   │                 │  cache, limits  │
+           └─────────────────┘                 └─────────────────┘
 ```
 
 | Service | What it is | Public address? | `APP_TARGET` |
 |---|---|---|---|
 | `Postgres` | The database | No | (Railway's PostgreSQL) |
+| `Redis` | The cache: the edition, each country's trends, request limits | No | (Railway's Redis) |
 | `api` | The API: stories, trends, wire, forms, sign-in, dashboard data | **No** | `api` |
 | `web` | The public website | Yes | not set (or `site`) |
 | `admin` | The staff dashboard, a separate website | Yes, its own | `admin` |
@@ -77,6 +80,19 @@ So the only way in is: the `admin` address → its server → the API. Knowing t
 2. Leave the service name as **`Postgres`**. The variables below refer to it by that name.
 3. In the Postgres service, turn on **backups**. Nothing in the code backs up the database.
 
+## Step 1b: Redis
+
+1. In the same project: **New** → **Database** → **Add Redis**.
+2. Leave the service name as **`Redis`**.
+3. No domain, no backups, nothing to configure. It only holds cached answers that the API can rebuild.
+
+What it is for: the API keeps the edition (30 seconds) and each country's trends (20 seconds) in Redis instead
+of asking the database on every visit, and counts requests per address there so the limit holds across restarts
+and across several `api` instances. Publishing or editing a story clears the affected cache at once.
+
+It is **optional by design**. Without `REDIS_URL`, or if Redis goes down, the API caches in its own memory and
+keeps answering. The `api` deploy log says which is in use: `Cache: Redis connected` or `Cache: in memory`.
+
 ## Step 2: the API (`api`)
 
 1. **New** → **GitHub Repo** → `kelvintawe13/mirroractu`.
@@ -90,6 +106,7 @@ So the only way in is: the `admin` address → its server → the API. Knowing t
 |---|---|---|
 | `APP_TARGET` | `api` | **Makes this service the API.** Without it the service starts as the website and its health check fails |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Connects to the database over the private network |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` | Connects to the cache over the private network |
 | `PORT` | `4000` | Set it so the other services can refer to it |
 | `NODE_ENV` | `production` | Turns on HTTPS-only cookies and the checks below |
 | `SITE_ORIGIN` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` | The public site. Reader forms are only accepted from here |
@@ -135,7 +152,7 @@ The API refuses to start in production if `SITE_ORIGIN`, `ADMIN_ORIGIN`, `ADMIN_
 
 ## Step 5: deploy order and first sign-in
 
-1. Deploy in this order: `Postgres` → `api` → `web` and `admin`. If `api` was deployed before the other two
+1. Deploy in this order: `Postgres` and `Redis` → `api` → `web` and `admin`. If `api` was deployed before the other two
    had domains, redeploy it once so `SITE_ORIGIN` and `ADMIN_ORIGIN` pick up the real addresses.
 2. Open the **dashboard's** address. You should see the sign-in page.
 3. Sign in with an address from `ADMIN_EMAILS` and the `ADMIN_PASSWORD`.
@@ -149,9 +166,72 @@ The API refuses to start in production if `SITE_ORIGIN`, `ADMIN_ORIGIN`, `ADMIN_
 | `web` | `api` | Private network, `http://api.railway.internal:4000` | `API_UPSTREAM` on `web` |
 | `admin` | `api` | Private network, same address, plus the gateway key header | `API_UPSTREAM` and `ADMIN_GATEWAY_KEY` on `admin` |
 | `api` | `Postgres` | Private network | `DATABASE_URL` on `api` |
+| `api` | `Redis` | Private network | `REDIS_URL` on `api` |
 | Reader's browser | `web` | HTTPS, public | Railway domain / your domain |
 | Staff browser | `admin` | HTTPS, public but unadvertised | Railway domain / your domain |
-| Anyone | `api`, `Postgres` | **Not reachable** | No public domain |
+| Anyone | `api`, `Postgres`, `Redis` | **Not reachable** | No public domain |
+
+## Email (Resend)
+
+MirrorActu sends its email through [Resend](https://resend.com). Until `RESEND_API_KEY` is set **nothing is
+sent**: each email is listed in the dashboard (**Email → Sent**) as “Not connected”, and you can preview all
+of them there.
+
+1. **Create a Resend account** and, under **Domains**, add the domain you will send from (for example
+   `mirroractu.net`). Resend shows DNS records (SPF, DKIM); add them at your DNS host and wait for “Verified”.
+2. **API Keys → Create API key**, with *Sending access*. Copy it.
+3. On the **`api`** service, set:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | the key from step 2 | Turns email on |
+| `MAIL_FROM` | `MirrorActu <news@yourdomain>` | Must be on the verified domain. Without it Resend's test sender is used, which only reaches your own Resend address |
+| `MAIL_REPLY_TO` | e.g. `newsroom@yourdomain` | Optional. Where replies go |
+| `MAIL_NEWSROOM_TO` | addresses, comma separated | Optional. Who hears about new corrections and enquiries. Default: every administrator |
+| `MAIL_POSTAL_ADDRESS` | the publisher's postal address | Printed at the foot of the newsletter. Anti-spam law in several countries requires it |
+| `RESEND_WEBHOOK_SECRET` | `whsec_…` from step 4 | Stops email to bounced addresses and to readers who mark it as spam |
+
+4. **Webhooks → Add webhook** in Resend: URL `https://YOUR-PUBLIC-SITE/api/v1/hooks/resend`, events
+   `email.bounced` and `email.complained`. Copy its signing secret into `RESEND_WEBHOOK_SECRET`.
+5. Redeploy `api`. Its log should say `Email: Resend connected, sending as …`.
+6. In the dashboard open **Email**, pick any template under **All emails** and press **Send this one to me**.
+
+The links in emails use the **first** address in `SITE_ORIGIN` (and `ADMIN_ORIGIN` for staff email), so put
+your real domain first once you have one.
+
+What is sent, and when:
+
+| Email | To | When |
+|---|---|---|
+| Confirm your address | Reader | They sign up. Nothing else is sent until they confirm |
+| Welcome | Reader | They confirm (once) |
+| The morning email | Confirmed subscribers | An administrator sends it from **Email**. Each reader gets the trends for their own country |
+| Correction received / outcome | Reader who left an address | They report; then when an editor marks it Corrected or No change needed, with the editor's note |
+| Offer enquiry received | Reader | They ask about an advertiser offer |
+| New correction / new enquiry | Newsroom | Every report and enquiry |
+| Account created | New member of staff | An administrator adds them. The first password is never emailed |
+| Password changed | Member of staff | Every time their password changes |
+
+## Prices in the reader's currency
+
+Advertiser prices are in US dollars and are shown in the currency of the reader's country, marked as approximate,
+with the dollar price beside them. The `api` service fetches exchange rates twice a day from open.er-api.com
+(free, no key; it needs outbound internet, which Railway services have) and keeps them in Redis. If the source
+cannot be reached a built-in table is used and the site says the rate is indicative. Set `RATES_URL=off` to
+use only the built-in table, or to another URL that returns `{ "rates": { "RWF": 1450, … } }` for a base of USD.
+
+## Country trends and where the reader is
+
+`GET /api/v1/trends?country=RW` answers with three lists: the country, its region, and global. The site asks for
+the reader's country and shows them in that order.
+
+Railway does **not** tell the app which country a visitor is in. So, on Railway alone, the site works it out from
+the device's time zone, and the reader can change it. For detection by network address, put **Cloudflare** in
+front of the `web` domain (proxied, orange cloud): it adds a `CF-IPCountry` header, which the API reads at
+`/api/v1/geo` and uses to label readership by country. Nothing else needs to be set.
+
+A country's own list fills in as readers there (who allowed measurement) open stories, and as editors tag
+stories with the countries they are about (the **Countries** field in the dashboard's story form).
 
 ## Your own domains
 
@@ -199,6 +279,14 @@ Also open `https://SITE/admin` in a browser: it should be the site's "Not found"
 |---|---|---|---|
 | `APP_TARGET` | Yes | | `api` |
 | `DATABASE_URL` | Yes | | Postgres connection |
+| `REDIS_URL` | Recommended | | Redis connection. Without it the API caches in its own memory |
+| `RESEND_API_KEY` | For email | | Resend API key. Without it no email is sent |
+| `MAIL_FROM` | For email | Resend test sender | Sender on your verified domain: `MirrorActu <news@yourdomain>` |
+| `MAIL_REPLY_TO` | No | `MAIL_FROM` | Where replies go |
+| `MAIL_NEWSROOM_TO` | No | administrators | Who hears about new corrections and enquiries |
+| `MAIL_POSTAL_ADDRESS` | Before sending newsletters | | Publisher's postal address in the newsletter footer |
+| `RESEND_WEBHOOK_SECRET` | Recommended | | Signing secret of the Resend webhook |
+| `RATES_URL` | No | open.er-api.com | Exchange-rate source, or `off` |
 | `NODE_ENV` | Yes | | `production` |
 | `PORT` | Yes on Railway | `4000` | Port to listen on |
 | `SITE_ORIGIN` | Yes | | Public site address(es), comma separated |

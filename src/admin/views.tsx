@@ -498,6 +498,34 @@ export function Wire() {
 
 const STATUS: Record<string, [string, 'signal' | 'warn' | 'good' | 'neutral']> = { open: ['Open', 'signal'], checking: ['Checking', 'warn'], corrected: ['Corrected', 'good'], no_change: ['No change needed', 'neutral'] }
 
+/** Close a report either way. If the reader left an address, they are emailed the outcome and the note. */
+function CloseReport({ correction, onDone }: { correction: { id: number; email: string | null }; onDone: () => void }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const close = (status: 'corrected' | 'no_change') => {
+    setBusy(true)
+    api(`/admin/corrections/${correction.id}`, { method: 'PATCH', body: { status, note: note.trim() || undefined } })
+      .then(onDone)
+      .catch((e: ApiError) => setError(e.message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="mt-3 grid gap-2 bg-paper px-3.5 py-3">
+      <label className="grid gap-1 text-[13px] font-semibold">
+        {correction.email ? 'Note to the reader' : 'Note for the record'}
+        <textarea value={note} maxLength={1000} rows={2} onChange={(e) => setNote(e.target.value)} placeholder={correction.email ? 'What you found, in a sentence or two. It is quoted in the email to the reader.' : 'What you found. Kept with the report.'} className={`${inputClass} text-[14px] font-normal`} />
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn size="sm" disabled={busy} onClick={() => close('corrected')}>Corrected</Btn>
+        <Btn size="sm" tone="line" disabled={busy} onClick={() => close('no_change')}>No change needed</Btn>
+        <span className="text-[12.5px] text-muted">{correction.email ? `Either one emails the outcome to ${correction.email}.` : 'The reader left no address, so no email is sent.'}</span>
+      </div>
+      {error && <Notice kind="error">{error}</Notice>}
+    </div>
+  )
+}
+
 export function InboxView() {
   const { corrections, reload } = useAdmin()
   const enquiries = useLoad<{ enquiries: { id: number; advertiser_id: string; offer_id: string; email: string; created_at: string }[] }>('/admin/enquiries')
@@ -535,6 +563,8 @@ export function InboxView() {
                   </div>
                   {c.story_title && <p className="mt-2 text-[13px] font-semibold text-muted">About: <span className="text-ink">{c.story_title}</span></p>}
                   <p className="mt-1.5 whitespace-pre-wrap text-[15px] leading-relaxed">{c.message}</p>
+                  {c.note && tab === 'done' && <p className="mt-2 border-l-[3px] border-rule pl-3 text-[13.5px] text-muted"><b className="text-ink">Editor’s note:</b> {c.note}</p>}
+                  {tab === 'waiting' && <CloseReport correction={c} onDone={reload} />}
                   {c.handled_by_name && <p className="mt-2 text-[12px] text-muted">Last handled by {c.handled_by_name}</p>}
                 </li>
               ))}
@@ -566,8 +596,11 @@ export function InboxView() {
 
 export function Subscribers() {
   const { user } = useAdmin()
-  const { data, error } = useLoad<{ subscribers: { id: number; email: string; status: string; source: string | null; created_at: string }[] }>('/admin/subscribers')
+  const { data, error, reload } = useLoad<{ subscribers: { id: number; email: string; status: string; source: string | null; country: string | null; created_at: string }[] }>('/admin/subscribers')
+  const mail = useLoad<{ configured: boolean; counts: { never_asked: number } }>('/admin/mail')
   const [filter, setFilter] = useState('')
+  const [asked, setAsked] = useState('')
+  const neverAsked = mail.data?.counts.never_asked ?? 0
   if (error) return <Notice kind="error">{error}</Notice>
   const all = data?.subscribers ?? []
   const week = all.filter((s) => Date.now() - new Date(s.created_at).getTime() < 7 * 86400000).length
@@ -579,7 +612,16 @@ export function Subscribers() {
         <Kpi label="This week" value={week} note="Last 7 days" />
         <Kpi label="Confirmed" value={all.filter((s) => s.status === 'confirmed').length} note={`${all.filter((s) => s.status === 'pending').length} pending`} />
       </div>
-      <Notice>Addresses stay “pending” until a confirmation email is sent and answered. No email service is connected yet, so nothing has been sent to anyone.</Notice>
+      <Notice>
+        A sign-up is “pending” until the reader answers the confirmation email, and only confirmed addresses receive the morning email. Unanswered sign-ups are deleted after 30 days.
+        {mail.data && !mail.data.configured && <> <b>Email is not connected yet</b>, so no confirmation is going out: see <Link to={adminPath('email')} className="font-semibold underline underline-offset-2">Email</Link>.</>}
+      </Notice>
+      {user.role === 'admin' && mail.data?.configured && neverAsked > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-l-[3px] border-signal bg-white px-4 py-3">
+          <p className="min-w-0 flex-1 text-[14px]"><b>{neverAsked.toLocaleString('en')} {neverAsked === 1 ? 'address' : 'addresses'} signed up before email was connected</b> and {neverAsked === 1 ? 'was' : 'were'} never asked to confirm. {asked}</p>
+          <Btn tone="line" size="sm" onClick={() => api<{ sent: number }>('/admin/subscribers/confirm-waiting', { body: {} }).then((r) => { setAsked(`Confirmation sent to ${r.sent}.`); mail.reload(); reload() }).catch((e: ApiError) => setAsked(e.message))}>Send them the confirmation email{neverAsked > 50 ? ' (50 at a time)' : ''}</Btn>
+        </div>
+      )}
       <Panel
         title="Sign-ups"
         flush
@@ -595,7 +637,7 @@ export function Subscribers() {
             {list.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule px-4 py-3 sm:px-5">
                 <span className="min-w-0 truncate text-[14.5px] font-semibold">{s.email}</span>
-                <span className="flex items-center gap-2.5 text-[12.5px] text-muted"><Pill tone={s.status === 'confirmed' ? 'good' : 'neutral'} className="capitalize">{s.status}</Pill>{s.source && <span>from {s.source}</span>}<span className="tabular-nums">{when(s.created_at)}</span></span>
+                <span className="flex items-center gap-2.5 text-[12.5px] text-muted"><Pill tone={s.status === 'confirmed' ? 'good' : s.status === 'bounced' ? 'signal' : 'neutral'} className="capitalize">{s.status}</Pill>{s.country && <span>{COUNTRIES.find((c) => c.code === s.country)?.name ?? s.country}</span>}{s.source && <span>from {s.source}</span>}<span className="tabular-nums">{when(s.created_at)}</span></span>
               </li>
             ))}
           </ul>

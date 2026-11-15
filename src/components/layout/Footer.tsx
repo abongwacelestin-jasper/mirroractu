@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { detectCountry } from '@/lib/edition'
 import { Link } from 'react-router-dom'
 
 import { useSiteActions } from '@/lib/actions'
@@ -151,12 +152,22 @@ function SignupForm({ formRef }: { formRef: React.RefObject<HTMLFormElement> }) 
   )
 }
 
+/** The reader's edition, so the morning email can lead with trends for their country. */
+const storedCountry = () => {
+  try {
+    const code = localStorage.getItem('ma-country') || localStorage.getItem('ma-country-geo') || detectCountry()
+    return /^[A-Z]{2}$/.test(code) ? code : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Sign an address up for the morning email. Returns the sentence to show the reader. */
 export async function subscribe(email: string, source: string): Promise<string> {
   if (!/^\S+@\S+\.\S+$/.test(email.trim())) return 'Enter an email address such as name@example.com.'
   try {
-    await api('/subscribe', { body: { email: email.trim(), source } })
-    return 'Thank you. Your address is saved, and we will email you to confirm before the first edition is sent.'
+    await api('/subscribe', { body: { email: email.trim(), source, country: storedCountry(), lang: document.documentElement.lang || 'en' } })
+    return 'Almost done. We have sent a confirmation email: open it and press “Confirm my address”. It can take a minute, and may be in your spam folder.'
   } catch (e) {
     return e instanceof ApiError ? e.message : 'Something went wrong. Try again.'
   }

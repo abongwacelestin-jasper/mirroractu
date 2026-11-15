@@ -10,6 +10,11 @@ import { one, q } from '../db'
 import { cacheBackend, cached } from '../cache'
 import { countryFromHeaders, trendLevels } from '../trends'
 import { onWire, recentWire } from '../wire'
+import { newsroomAddresses, sendLater, siteUrl, deskUrl } from '../mail/send'
+import { confirmSubscription, offerFacts, ref, requestSubscription, subscriptionStatus, unsubscribe } from '../mail/service'
+import * as T from '../mail/templates'
+import { rates } from '../rates'
+import { resendWebhook } from '../mail/webhook'
 
 const email = z.string().trim().toLowerCase().email().max(254)
 const strict = { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }
@@ -92,27 +97,86 @@ export async function publicRoutes(app: FastifyInstance) {
 
   app.post('/subscribe', strict, async (req, reply) => {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
-    const body = z.object({ email, source: z.string().max(40).optional() }).safeParse(req.body)
+    const body = z.object({ email, source: z.string().max(40).optional(), country: z.string().max(3).optional(), lang: z.string().max(8).optional() }).safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Enter an email address such as name@example.com.' })
+    const country = countryFromHeaders(req.headers) ?? (body.data.country && /^[A-Za-z]{2}$/.test(body.data.country) ? body.data.country.toUpperCase() : null)
     // The same answer whether or not the address was already there, so the form cannot be used to test who subscribes.
-    await q('INSERT INTO subscribers (email, source) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING', [body.data.email, body.data.source ?? null])
+    await requestSubscription(body.data.email, { source: body.data.source, country, lang: body.data.lang })
     return { ok: true }
+  })
+
+  /* The links in the confirmation email and in every edition open a page on the site, and the
+     page calls these. The token in the link is the reader's proof: no sign-in is involved. */
+  const token = z.object({ token: z.string().min(16).max(120) })
+  const gone = { error: 'This link is not valid any more. Sign up again from the site to get a new one.' }
+
+  app.get('/subscription', strict, async (req, reply) => {
+    const p = token.safeParse(req.query)
+    const found = p.success ? await subscriptionStatus(p.data.token) : null
+    return found ?? reply.code(404).send(gone)
+  })
+
+  app.post('/subscribe/confirm', strict, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    const p = token.safeParse(req.body)
+    const done = p.success ? await confirmSubscription(p.data.token) : null
+    return done ?? reply.code(404).send(gone)
+  })
+
+  app.post('/unsubscribe', strict, async (req, reply) => {
+    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    const p = token.safeParse(req.body)
+    const done = p.success ? await unsubscribe(p.data.token) : null
+    return done ?? reply.code(404).send(gone)
+  })
+
+  /* One-click unsubscribe (RFC 8058). The reader's mail program posts here when they press its
+     own Unsubscribe button, so there is no page and no Origin header: the token decides. */
+  app.register(async (hook) => {
+    hook.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => done(null, body))
+    hook.post('/unsubscribe/one-click', strict, async (req, reply) => {
+      const p = z.object({ t: z.string().min(16).max(120) }).safeParse(req.query)
+      if (p.success) await unsubscribe(p.data.t)
+      return reply.code(200).send({ ok: true })
+    })
+  })
+
+  /* Resend tells us here when an address bounces or a reader marks an email as spam. */
+  app.register(resendWebhook)
+
+  /** Exchange rates against the US dollar, refreshed twice a day. */
+  app.get('/rates', async (_req, reply) => {
+    reply.header('Cache-Control', 'public, max-age=3600')
+    return rates()
   })
 
   app.post('/corrections', strict, async (req, reply) => {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
     const body = z.object({ message: z.string().trim().min(5).max(4000), storyTitle: z.string().trim().max(300).optional(), email: email.optional().or(z.literal('')) }).safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Describe what we should check, in at least a few words.' })
-    await q('INSERT INTO corrections (story_title, message, email) VALUES ($1, $2, $3)', [body.data.storyTitle || null, body.data.message, body.data.email || null])
-    return { ok: true }
+    const row = await one<{ id: string }>('INSERT INTO corrections (story_title, message, email) VALUES ($1, $2, $3) RETURNING id', [body.data.storyTitle || null, body.data.message, body.data.email || null])
+    const reference = ref('C', row!.id)
+    // The reader's receipt names the story only if it is one of ours, and never repeats what was
+    // typed: otherwise the form could be used to send anyone a message of the sender's choosing.
+    const known = body.data.storyTitle ? await one("SELECT 1 FROM stories WHERE published AND data->>'h' = $1", [body.data.storyTitle]) : null
+    if (body.data.email) sendLater({ to: body.data.email, kind: 'correction.received', mail: T.correctionReceived({ site: siteUrl() }, { ref: reference, storyTitle: known ? body.data.storyTitle : undefined }) })
+    const staffMail = T.staffNewCorrection({ site: siteUrl() }, deskUrl(), { ref: reference, storyTitle: body.data.storyTitle || undefined, message: body.data.message, email: body.data.email || undefined })
+    for (const to of await newsroomAddresses()) sendLater({ to, kind: 'staff.correction', mail: staffMail, replyTo: body.data.email || undefined })
+    return { ok: true, ref: reference }
   })
 
   app.post('/enquiries', strict, async (req, reply) => {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
     const body = z.object({ email, advertiserId: z.string().max(80), offerId: z.string().max(80) }).safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Enter an email address such as name@example.com.' })
-    await q('INSERT INTO enquiries (advertiser_id, offer_id, email) VALUES ($1, $2, $3)', [body.data.advertiserId, body.data.offerId, body.data.email])
-    return { ok: true }
+    const offer = offerFacts(body.data.advertiserId, body.data.offerId)
+    if (!offer) return reply.code(400).send({ error: 'That offer is no longer listed.' })
+    const row = await one<{ id: string }>('INSERT INTO enquiries (advertiser_id, offer_id, email) VALUES ($1, $2, $3) RETURNING id', [body.data.advertiserId, body.data.offerId, body.data.email])
+    const reference = ref('E', row!.id)
+    sendLater({ to: body.data.email, kind: 'enquiry.received', mail: T.enquiryReceived({ site: siteUrl() }, { ref: reference, offer }) })
+    const staffMail = T.staffNewEnquiry({ site: siteUrl() }, deskUrl(), { ref: reference, offer, email: body.data.email })
+    for (const to of await newsroomAddresses()) sendLater({ to, kind: 'staff.enquiry', mail: staffMail, replyTo: body.data.email })
+    return { ok: true, ref: reference }
   })
 
   /**

@@ -151,7 +151,7 @@ export function Drawer({ open, onClose, title, side = 'right', children }: { ope
             transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
             className={twMerge(
               'absolute flex flex-col bg-paper shadow-[0_0_60px_-10px_rgba(14,20,36,.6)]',
-              phone ? 'inset-x-0 bottom-0 max-h-[88dvh] rounded-t-2xl' : twMerge('inset-y-0 w-[min(380px,92vw)]', side === 'right' ? 'right-0' : 'left-0')
+              phone ? 'inset-x-0 bottom-0 max-h-[88dvh] rounded-t-2xl' : twMerge('inset-y-0 w-[min(380px,92vw)] pt-[var(--safe-top)]', side === 'right' ? 'right-0' : 'left-0')
             )}
           >
             {phone && <span aria-hidden="true" className="mx-auto mt-2.5 h-1 w-10 flex-none rounded-full bg-ink/20" />}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useMoney } from '@/lib/money'
 import { CalendarDays, Clock, Image as ImageIcon, Mic, Play, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
@@ -46,6 +47,7 @@ type Props = {
  * Arrow keys move through results; Enter opens one.
  */
 export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, variant = 'page', onClose }: Props) {
+  const money = useMoney()
   const input = useRef<HTMLInputElement>(null)
   const root = useRef<HTMLDivElement>(null)
   // Filters start open on the results page, except on phones where they would push results off screen.
@@ -341,7 +343,7 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
                   <span className="block text-[15.5px] font-semibold decoration-signal decoration-2 underline-offset-4 group-hover:underline"><Highlight text={offer.title} terms={terms} /></span>
                   <span className="block text-[13px] text-muted">Paid for by {advertiser.name}</span>
                 </span>
-                <span className="whitespace-nowrap text-[15px] font-bold tabular-nums">{offer.price}</span>
+                <span className="whitespace-nowrap text-[15px] font-bold tabular-nums" translate="no">{money.price(offer.price)}</span>
               </Link>
             ))}
           </Group>

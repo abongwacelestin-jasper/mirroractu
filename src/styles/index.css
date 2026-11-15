@@ -24,6 +24,13 @@
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* The strip at the top of an iPhone screen that the notch, Dynamic Island and status bar sit in.
+   It is zero in a normal browser tab; it has a size when MirrorActu is installed to the home
+   screen and runs full screen. Everything pinned to the top of the screen starts below it. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
 @layer base {
   html {
     background: var(--color-white, #fff);
@@ -70,6 +77,11 @@
 @utility axis-x {
   background-image: linear-gradient(90deg, var(--color-signal) 55%, transparent 0);
   background-size: 9px 2px;
+}
+/* A thin, quiet scrollbar for panels that scroll on their own (the dashboard's columns). */
+@utility scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(138 147 166 / 0.45) transparent;
 }
 @utility no-scrollbar {
   scrollbar-width: none;

@@ -63,9 +63,14 @@ With no `APP_TARGET` (`npm run dev`) both run together, with the dashboard under
 |---|---|
 | `GET /bootstrap` | The whole edition in one request: stories, sections, graphics, calendar, trend topics |
 | `GET /stories`, `GET /stories/:slug` | Stories, filterable by `desk` and `q` |
-| `GET /trends` | Today's trends, ranked by stories filed, wire activity and readership in the last 24 hours |
+| `GET /trends?country=RW` | Today's trends at three levels: the country, its region, global. Ranked by stories about the place, wire activity and what measured readers there open. Without a country: global only |
+| `GET /geo` | The reader's country, when the host or CDN supplies it (`CF-IPCountry`, `x-vercel-ip-country`, `x-country-code`) |
 | `GET /wire`, `GET /wire/stream` | The live wire; the stream pushes each update the moment it is filed |
-| `POST /subscribe`, `/corrections`, `/enquiries` | The three reader forms |
+| `POST /subscribe`, `/corrections`, `/enquiries` | The three reader forms. Each sends email (see *Email*) |
+| `POST /subscribe/confirm`, `/unsubscribe`, `GET /subscription` | Used by the page the email links open; the token in the link is the proof |
+| `POST /unsubscribe/one-click` | The mail program's own Unsubscribe button (RFC 8058) |
+| `POST /hooks/resend` | Signed webhook from Resend: bounces and spam complaints |
+| `GET /rates` | Exchange rates against the US dollar, for prices in the reader's currency |
 | `POST /events` | A story view, sent only for readers who allowed measurement |
 | `POST /auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Staff sign-in |
 | `/admin/…` | Dashboard: overview and analytics, stories, wire, corrections, enquiries, subscribers, staff, audit log |
@@ -129,7 +134,7 @@ On a server:
 
 ### Railway
 
-**The complete Railway guide is in [`RAILWAY.md`](RAILWAY.md)**: four services (Postgres, `api`, `web`, `admin`),
+**The complete Railway guide is in [`RAILWAY.md`](RAILWAY.md)**: five services (Postgres, Redis, `api`, `web`, `admin`),
 every variable, how the services connect, custom domains, a check that the dashboard is locked, and troubleshooting.
 
 Railway does not tell the app which country a reader is in, so editions use the device time zone there. For
@@ -315,10 +320,62 @@ photo, section name, search term and so on). The masthead's top links underline 
 - **IP-accurate detection** needs hosting: have the host write `<meta name="ma-country" content="RW">`
   from its geo header (Vercel `x-vercel-ip-country`, Cloudflare `CF-IPCountry`), or set
   `VITE_GEO_ENDPOINT` to a URL returning `{ "country_code": "RW" }`.
-- **Per-country content** today is the same 38-story snapshot, re-ordered. Real country editions
-  need the CMS to accept the country code and return stories for it.
-- **Language**: `src/lib/translate.ts` loads Google's website translator only when a reader picks a
-  language. It is machine translation, labelled as such on screen, with a one-tap way back to English.
+- **Country trends**: `server/src/trends.ts` ranks topics three times: for the country, for its region,
+  and globally. A story counts for a country when an editor tagged it (the **Countries** field in the
+  dashboard; existing stories are tagged once at start-up), and readership counts where measured readers
+  are. The Trends page shows the three as tabs; the trends popup uses the nearest level.
+- **Language is asked, not assumed**: a reader whose country has another main language gets one
+  question ("Lire MirrorActu en français ?"). *Yes* is their consent to Google Translate and moves them
+  to `/fr`; *Keep English* is remembered and the question is not asked again. The choice
+  (`ma-lang-pref`) is honoured on later visits only while translation consent stands.
+  `src/lib/translate.ts` never loads Google's translator before that consent.
+
+## Email (Resend)
+
+`server/src/mail/`: `send.ts` talks to Resend's HTTP API and logs every attempt (never the body),
+`templates.ts` holds all eleven emails as HTML plus plain text, `service.ts` runs the sign-up flow and
+builds editions, `webhook.ts` verifies Resend's signed bounce and complaint reports.
+
+- **Double opt-in.** A sign-up gets one confirmation email and nothing else until the link is
+  followed. Unanswered sign-ups are deleted after 30 days. Every edition carries an unsubscribe link
+  and the one-click header mail programs use; bounced and complaining addresses stop automatically.
+- **The morning email** is written in the dashboard under **Email**: subject, opening note, up to
+  eight stories (the first leads), live preview for desktop and phone, a test to yourself, then send.
+  Only administrators can send to readers. Each reader gets the trends block for their own country.
+- **No abuse through the forms.** Receipts to an address a stranger typed never repeat what was
+  typed, name a story only if it is a real one, and are rate limited.
+- **Not tracked.** No open pixels, no click tracking.
+- Without `RESEND_API_KEY` nothing is sent; in development the first link of each email is printed
+  in the API log so the flow can be followed by hand. Variables: `server/.env.example`.
+
+## Currency
+
+`src/data/currency.ts` maps each country edition to its currency; `src/lib/money.ts` converts the
+dollar prices on offers (cards, offer pages, comparison tables, search) using `GET /rates`, rounds
+them, and always shows the dollar price they came from. Readers on the US or international edition
+see dollars unchanged.
+
+## iPhone safe area
+
+`--safe-top` in `src/styles/index.css` is the height of the notch and status-bar strip when the app
+is installed to the home screen. The page, the sticky header, sticky tab bars, the search sheet and
+the dashboard all start below it, and a fixed ink bar fills the strip itself.
+
+## Renewberry promotion
+
+`src/components/overlays/PartnerPromo.tsx` shows a labelled promotion for Renewberry at a random
+moment (50 to 150 seconds into a page, about two visits in three, then not again for eight hours),
+never over another popup and never on advert-free pages. Its words and link are in
+`src/data/partner.ts`.
+
+## Caching (Redis)
+
+`server/src/cache.ts`. With `REDIS_URL` set, the edition (`/bootstrap`, 30 s) and each country's trends
+(20 s) are served from Redis, and request limits are counted there. Saving a story or filing a wire
+update bumps a version number, so readers see the change at once and old entries expire on their own.
+Without `REDIS_URL`, or while Redis is down, each API instance caches in memory and keeps working.
+`GET /api/v1/health` reports which is in use (`"cache": "redis"` or `"memory"`). Docker Compose starts
+Redis for you.
 
 ## Motion
 

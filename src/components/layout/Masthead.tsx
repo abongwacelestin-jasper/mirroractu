@@ -52,7 +52,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
         </Container>
       </div>
 
-      <header className="sticky top-0 z-30 bg-ink text-white" onMouseLeave={() => hover(null)}>
+      <header className="sticky top-[var(--safe-top)] z-30 bg-ink text-white" onMouseLeave={() => hover(null)}>
         <Container className="flex flex-wrap items-center gap-x-4 pt-2.5 lg:h-[68px] lg:flex-nowrap lg:gap-[22px] lg:pt-0 xl:gap-9">
           <Link to="/" aria-label="MirrorActu, home" className="mr-auto flex items-center gap-2 sm:gap-2.5 lg:mr-0">
             <Logo className="size-7 sm:size-8" />

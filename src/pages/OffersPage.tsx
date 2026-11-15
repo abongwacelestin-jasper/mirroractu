@@ -10,6 +10,7 @@ import { Container, Hl, PageHeader, TextLink } from '@/components/ui'
 import type { Media } from '@/data/media'
 import { ADVERTISERS, AIRLINES, Advertiser, FLIGHT_GALLERY, OFFER_CATEGORIES, Offer, OfferCategoryId, airlinesOn, findOffer, offerPath, offersPath } from '@/data/offers'
 import { api } from '@/lib/api'
+import { useMoney } from '@/lib/money'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 const ICONS: Record<OfferCategoryId, React.ComponentType<{ className?: string }>> = {
@@ -40,7 +41,7 @@ function Photo({ image, ratio = 'aspect-[3/2]', credit = false, eager = false, c
 
 function CategoryTabs() {
   return (
-    <nav aria-label="Offer categories" className="sticky top-[96px] z-[5] border-b border-rule bg-white lg:top-[68px]">
+    <nav aria-label="Offer categories" className="sticky top-[calc(96px+var(--safe-top))] z-[5] border-b border-rule bg-white lg:top-[calc(68px+var(--safe-top))]">
       <Container className="no-scrollbar flex gap-2 overflow-x-auto py-2.5">
         {[{ id: undefined, name: 'All offers' }, ...OFFER_CATEGORIES].map((c) => {
           const Icon = c.id ? ICONS[c.id] : null
@@ -65,17 +66,18 @@ function CategoryTabs() {
 
 /** One offer as a picture card. The whole card opens the offer's page. */
 function OfferCard({ advertiser, offer }: { advertiser: Advertiser; offer: Offer }) {
+  const money = useMoney()
   return (
     <Link to={offerPath(advertiser, offer)} data-reveal className="group flex h-full flex-col border border-rule bg-white transition-shadow duration-200 hover:shadow-[0_18px_36px_-20px_rgba(14,20,36,.45)]">
       <div className="relative">
         <Photo image={offer.image} />
-        <span className="absolute left-0 top-3 bg-ink px-2.5 py-1 text-[15px] font-extrabold tabular-nums text-white">{offer.price}</span>
+        <span className="absolute left-0 top-3 bg-ink px-2.5 py-1 text-[15px] font-extrabold tabular-nums text-white" translate="no">{money.price(offer.price)}</span>
       </div>
       <div className="flex flex-1 flex-col p-4">
         <p className="flex items-center gap-2 text-[12px] text-muted"><AdTag className="text-[9px]">Ad</AdTag>{advertiser.name}</p>
         <h3 className="mt-1.5 text-[20px] leading-tight"><Hl>{offer.title}</Hl></h3>
         <p className="mt-1 text-[14.5px] text-muted">{offer.detail}</p>
-        <p className="mt-2 text-[12.5px] text-muted">{offer.priceNote}</p>
+        <p className="mt-2 text-[12.5px] text-muted">{offer.priceNote}{money.from(offer.price) && <span translate="no"> · {money.from(offer.price)}</span>}</p>
         <span className="mt-auto flex items-center gap-1.5 pt-3.5 text-[14px] font-semibold">
           {advertiser.cta} <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
         </span>
@@ -117,10 +119,17 @@ function AdvertiserBlock({ advertiser }: { advertiser: Advertiser }) {
 }
 
 function Disclosure() {
+  const money = useMoney()
   return (
     <p className="mt-10 flex max-w-[90ch] gap-3 border-t border-rule pt-5 text-[13.5px] text-muted">
       <Info className="mt-0.5 size-4 flex-none" />
       <span>
+        {money.local && (
+          <span className="mb-2 block" translate="no">
+            Prices are set in US dollars and shown here in {money.currencyName}, because you are reading the {money.country.name} edition: $1 = {money.perDollar()}
+            {money.source === 'live' ? <> at today’s rate (<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">rates by ExchangeRate-API</a>)</> : ', an indicative rate'}. Converted prices are rounded and approximate.
+          </span>
+        )}
         Advertisers, prices and schedules shown are placeholders until partner feeds are connected. Offers are sold separately from the newsroom, and
         sponsors cannot buy coverage. <TextLink to="/how-we-work#advertising" className="text-ink">Our advertising rules</TextLink>
       </span>
@@ -235,6 +244,7 @@ function Airlines() {
 
 /** Side-by-side comparison of an advertiser's offers, one row per fact. */
 function Compare({ advertiser }: { advertiser: Advertiser }) {
+  const money = useMoney()
   const labels = [...new Set(advertiser.offers.flatMap((o) => o.facts.map((f) => f[0])))]
   return (
     <section aria-label={`Compare ${advertiser.name} offers`} data-reveal className="mt-14">
@@ -255,7 +265,7 @@ function Compare({ advertiser }: { advertiser: Advertiser }) {
             <tr className="border-t border-ink bg-paper/60">
               <th className="py-2.5 pl-2 text-left text-[13px] font-medium text-muted">Price</th>
               {advertiser.offers.map((o) => (
-                <td key={o.id} className="py-2.5 pl-4"><b className="text-[18px] font-extrabold tabular-nums"><CountUp value={o.price} /></b><span className="block text-[12px] text-muted">{o.priceNote}</span></td>
+                <td key={o.id} className="py-2.5 pl-4"><b className="text-[18px] font-extrabold tabular-nums"><CountUp value={money.price(o.price)} /></b><span className="block text-[12px] text-muted">{o.priceNote}{money.from(o.price) && <span translate="no"> · {money.from(o.price)}</span>}</span></td>
               ))}
             </tr>
             {labels.map((label) => (
@@ -319,6 +329,7 @@ function OtherCategories({ except }: { except: OfferCategoryId }) {
 
 export function OfferPage() {
   const { category, offerId } = useParams()
+  const money = useMoney()
   const found = findOffer(category, offerId)
   if (!found) return <NotFoundPage />
   const { advertiser, offer } = found
@@ -382,8 +393,13 @@ export function OfferPage() {
             <div>
               <div className="p-6" style={{ background: advertiser.bg, color: advertiser.fg }}>
                 <p className="text-[13px] opacity-85">{advertiser.name}</p>
-                <p className="mt-1 text-[52px] font-extrabold leading-none tracking-[-0.04em] tabular-nums"><CountUp value={offer.price} /></p>
+                <p className="mt-1 text-[52px] font-extrabold leading-none tracking-[-0.04em] tabular-nums"><CountUp value={money.price(offer.price)} /></p>
                 <p className="mt-1.5 text-[14.5px] opacity-90">{offer.priceNote}</p>
+                {money.from(offer.price) && (
+                  <p className="mt-2.5 text-[13.5px] opacity-90" translate="no">
+                    <b>{offer.price}</b> in US dollars, shown in {money.currencyName} for {money.country.name} at {money.source === 'live' ? 'today’s rate' : 'an indicative rate'} ($1 = {money.perDollar()}). The advertiser sets the price in dollars; what you pay depends on their rate and your bank’s.
+                  </p>
+                )}
                 <p className="mt-4 border-t pt-3 text-[14px]" style={{ borderColor: `${advertiser.accent}55` }}>{offer.terms}</p>
               </div>
               <Enquiry key={offer.id} advertiser={advertiser} offerId={offer.id} />
@@ -431,7 +447,7 @@ export function OfferPage() {
                             <span className="block text-[15.5px] font-semibold leading-tight"><Hl>{o.title}</Hl></span>
                             <span className="block truncate text-[13px] text-muted">{o.detail}</span>
                           </span>
-                          <b className="whitespace-nowrap text-[15.5px] font-extrabold tabular-nums">{o.price}</b>
+                          <b className="whitespace-nowrap text-[15.5px] font-extrabold tabular-nums" translate="no">{money.price(o.price)}</b>
                         </Link>
                       </li>
                     ))}

@@ -53,6 +53,7 @@ export function metaFor(pathname: string, search = ''): PageMeta {
     const q = new URLSearchParams(search).get('q')
     if (q) return page(`“${q}”: search results`, `MirrorActu stories, videos and dates matching “${q}”.`)
   }
+  if (first === 'newsletter') return page(second === 'unsubscribe' ? 'Unsubscribe from the morning email' : 'Your morning email', 'Confirm or stop the MirrorActu morning email.')
   const fixed = STATIC[`/${first}`]
   if (fixed && !second) return page(fixed[0], fixed[1])
   const section = getCategory(first)

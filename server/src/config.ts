@@ -17,6 +17,22 @@
  *   REDIS_URL             Redis connection string. Optional: without it each API instance caches in
  *                         its own memory. With it, the cache and rate limits are shared.
  *
+ * Email, sent through Resend (resend.com). Without RESEND_API_KEY nothing is sent: each email is
+ * recorded as "not configured" and, outside production, its links are printed in the log.
+ *   RESEND_API_KEY        API key from the Resend dashboard
+ *   MAIL_FROM             sender, on a domain verified in Resend: "MirrorActu <news@mirroractu.net>"
+ *   MAIL_REPLY_TO         where replies go (optional; defaults to the sender)
+ *   MAIL_NEWSROOM_TO      who is told about new corrections and enquiries, comma separated
+ *                         (optional; defaults to every administrator)
+ *   MAIL_POSTAL_ADDRESS   the publisher's postal address, printed in the footer of the newsletter.
+ *                         Anti-spam law in several countries requires one in marketing email.
+ *   RESEND_WEBHOOK_SECRET signing secret of a Resend webhook pointed at /api/v1/hooks/resend.
+ *                         With it, bounced addresses and spam complaints stop receiving email.
+ *
+ * Money
+ *   RATES_URL             where exchange rates come from (JSON with a "rates" object, base USD).
+ *                         Defaults to open.er-api.com. Set to "off" to use the built-in table only.
+ *
  * Staff accounts, created automatically on every start (see auth.ts → syncStaff)
  *   ADMIN_EMAILS          administrators, comma separated: "Ada Obi <ada@x.com>, sam@x.com"
  *   EDITOR_EMAILS         editors, same format
@@ -72,6 +88,16 @@ export const config = {
   siteOrigins: (env.SITE_ORIGIN ?? 'http://localhost:5173,http://localhost:8080').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   analyticsSalt: env.ANALYTICS_SALT ?? '',
   redisUrl: env.REDIS_URL ?? '',
+
+  resendApiKey: env.RESEND_API_KEY ?? '',
+  /** Resend's shared test sender only delivers to the Resend account's own address. */
+  mailFrom: env.MAIL_FROM || 'MirrorActu <onboarding@resend.dev>',
+  mailFromSet: !!env.MAIL_FROM,
+  mailReplyTo: env.MAIL_REPLY_TO ?? '',
+  mailNewsroomTo: (env.MAIL_NEWSROOM_TO ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^\S+@\S+\.\S+$/.test(s)),
+  mailPostalAddress: (env.MAIL_POSTAL_ADDRESS ?? '').trim(),
+  resendWebhookSecret: env.RESEND_WEBHOOK_SECRET ?? '',
+  ratesUrl: env.RATES_URL || 'https://open.er-api.com/v6/latest/USD',
   adminOrigins: (env.ADMIN_ORIGIN ?? 'http://localhost:8081,http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   adminGatewayKey: env.ADMIN_GATEWAY_KEY ?? '',
 
@@ -101,6 +127,7 @@ export function checkConfig() {
   if (config.production && config.adminOrigins.some((o) => config.siteOrigins.includes(o))) problems.push('ADMIN_ORIGIN must be a different address from SITE_ORIGIN')
   if (config.staff.length && config.adminPassword.length < 12) problems.push('ADMIN_PASSWORD needs at least 12 characters when ADMIN_EMAILS or EDITOR_EMAILS is set')
   if (config.production && /^(password|changeme|admin)/i.test(config.adminPassword)) problems.push('ADMIN_PASSWORD is too easy to guess')
+  if (config.production && config.resendApiKey && !env.MAIL_FROM) console.warn('MAIL_FROM is not set: email is going out from Resend\'s test sender, which only reaches your own Resend address.')
   if (problems.length) {
     console.error('Cannot start:\n - ' + problems.join('\n - '))
     process.exit(1)

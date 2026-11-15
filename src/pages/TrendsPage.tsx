@@ -45,7 +45,7 @@ export function TrendsPage() {
       />
 
       {/* The ladder: your country, your region, the world */}
-      <div className="sticky top-[96px] z-[5] border-b border-rule bg-white lg:top-[68px]">
+      <div className="sticky top-[calc(96px+var(--safe-top))] z-[5] border-b border-rule bg-white lg:top-[calc(68px+var(--safe-top))]">
         <Container className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 py-2.5">
           <div role="tablist" aria-label="Where" className="no-scrollbar flex min-w-0 gap-2 overflow-x-auto">
             {levels.map((l) => (

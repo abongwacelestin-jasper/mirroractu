@@ -24,6 +24,7 @@ const SearchPage = page(() => import('@/pages/SearchPage'), 'SearchPage')
 // public site build this is `null`, the import is removed, and none of its code is shipped.
 const AdminApp = import.meta.env.VITE_APP_TARGET !== 'site' ? page(() => import('@/admin/AdminApp'), 'AdminApp') : null
 const ADMIN_ONLY = import.meta.env.VITE_APP_TARGET === 'admin'
+const NewsletterPage = page(() => import('@/pages/NewsletterPage'), 'NewsletterPage')
 const LegalPage = page(() => import('@/pages/LegalPage'), 'LegalPage')
 const NotFoundPage = page(() => import('@/pages/NotFoundPage'), 'NotFoundPage')
 
@@ -63,6 +64,7 @@ export function App({ preview = 'live' }: { preview?: PreviewState }) {
           <Route path="trends" element={<TrendsPage />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="legal" element={<LegalPage />} />
+          <Route path="newsletter/:action" element={<NewsletterPage />} />
           <Route path="offers" element={<OffersPage />} />
           <Route path="offers/:category" element={<OffersPage />} />
           <Route path="offers/:category/:offerId" element={<OfferPage />} />

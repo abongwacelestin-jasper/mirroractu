@@ -101,6 +101,14 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_FORCE_RESET: ${ADMIN_FORCE_RESET:-}
+      # Email through Resend. Without RESEND_API_KEY nothing is sent. See server/.env.example.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      MAIL_NEWSROOM_TO: ${MAIL_NEWSROOM_TO:-}
+      MAIL_POSTAL_ADDRESS: ${MAIL_POSTAL_ADDRESS:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      RATES_URL: ${RATES_URL:-}
       ANALYTICS_SALT: ${ANALYTICS_SALT:-dev-only-salt-change-me}
       SESSION_DAYS: ${SESSION_DAYS:-7}
       LOGIN_MAX_FAILS: ${LOGIN_MAX_FAILS:-5}
