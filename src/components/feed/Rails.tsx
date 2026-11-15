@@ -1,4 +1,5 @@
 import React from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -70,7 +71,7 @@ export function YourRail() {
             ['Read', read.length, null],
           ].map(([label, n, to]) => (
             <div key={label as string}>
-              <dd className="text-[24px] font-extrabold tabular-nums leading-none">{n}</dd>
+              <dd className="text-[24px] font-extrabold tabular-nums leading-none"><CountUp value={n as number} /></dd>
               <dt className="mt-1 text-[12px] text-mirror">
                 {to && (to as string).startsWith('/') ? <Link to={to as string} className="underline underline-offset-2 hover:text-white">{label}</Link> : label}
               </dt>

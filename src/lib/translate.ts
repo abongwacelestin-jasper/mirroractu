@@ -1,26 +1,29 @@
 /**
- * Page translation through Google's website translator (the "Google Translate widget").
+ * Languages and addresses.
  *
- * Nothing is loaded until a reader picks a language: only then is Google's script fetched and
- * the page text sent to Google for machine translation. The choice is kept in Google's own
- * `googtrans` cookie, so the next page load translates again.
+ * The language is the first part of the address: /fr/trends, /sw/story/…, /en/brief.
+ * An address with no language prefix is English. Every page therefore has one address per
+ * language, which can be shared, bookmarked and indexed (see `alternateLinks`).
  *
- * Things to know before relying on it:
- *  - It is machine translation. Names, figures and quotes can come out wrong.
+ * MirrorActu is written in English. Other languages are machine translated in the reader's
+ * browser by Google's website translator, and only if they allowed "Translation by Google":
+ *  - It is machine translation. Names, figures and quotes can come out wrong, and the page
+ *    says so while it is translated.
  *  - Google no longer offers this widget to new commercial sites; it still works, but for a
  *    launch at scale use the paid Cloud Translation API or translated editions from the CMS.
- *  - Google rewrites text nodes under React. `guardReactDom` below stops that from crashing
- *    React when it later updates the same nodes.
+ *    When translated editions exist, serve them at these same addresses.
+ *  - Google rewrites text nodes under React. `guardReactDom` stops that from crashing React
+ *    when it later updates the same nodes.
  */
 
-export type Language = { code: string; name: string; native: string }
+export type Language = { code: string; name: string; native: string; rtl?: boolean }
 
 export const LANGUAGES: Language[] = [
   { code: 'en', name: 'English', native: 'English' },
   { code: 'fr', name: 'French', native: 'Français' },
   { code: 'rw', name: 'Kinyarwanda', native: 'Ikinyarwanda' },
   { code: 'sw', name: 'Swahili', native: 'Kiswahili' },
-  { code: 'ar', name: 'Arabic', native: 'العربية' },
+  { code: 'ar', name: 'Arabic', native: 'العربية', rtl: true },
   { code: 'am', name: 'Amharic', native: 'አማርኛ' },
   { code: 'ha', name: 'Hausa', native: 'Hausa' },
   { code: 'yo', name: 'Yoruba', native: 'Yorùbá' },
@@ -46,14 +49,61 @@ export const LANGUAGES: Language[] = [
 
 export const getLanguage = (code: string) => LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0]
 
+/* ---------- The language in the address ---------- */
+
+export type Locale = {
+  /** Language code, 'en' when the address has no prefix */
+  lang: string
+  /** The prefix to mount the router on: '/fr', or '' for an unprefixed address */
+  base: string
+  /** The address without the prefix, always starting with '/' */
+  rest: string
+}
+
+/** Split an address into its language prefix and the rest: '/fr/trends' → fr + '/trends'. */
+export function localeFromPath(pathname: string = location.pathname): Locale {
+  const seg = pathname.split('/')[1] ?? ''
+  const match = LANGUAGES.find((l) => l.code.toLowerCase() === seg.toLowerCase())
+  if (!match) return { lang: 'en', base: '', rest: pathname || '/' }
+  const base = `/${seg}`
+  return { lang: match.code, base, rest: pathname.slice(base.length) || '/' }
+}
+
+/** The address of a page in a language: localePath('fr', '/trends') → '/fr/trends'. */
+export const localePath = (code: string, rest: string = localeFromPath().rest) => `/${code}${rest === '/' ? '' : rest}`
+
+/** The language of the page being shown. */
+export const currentLanguage = () => localeFromPath().lang
+
+/**
+ * Go to the same page in another language. It is a full page load on purpose: Google's
+ * translator has rewritten the page, and a fresh load is the only clean way to change or undo that.
+ */
+export function setLanguage(code: string) {
+  location.assign(localePath(code) + location.search + location.hash)
+}
+
+/** <link rel="alternate" hreflang> for every language, plus the canonical address, for search engines. */
+export function alternateLinks() {
+  const { rest, lang } = localeFromPath()
+  document.head.querySelectorAll('link[data-locale]').forEach((l) => l.remove())
+  const add = (rel: string, href: string, hreflang?: string) => {
+    const link = document.createElement('link')
+    link.rel = rel
+    link.href = location.origin + href
+    if (hreflang) link.hreflang = hreflang
+    link.dataset.locale = ''
+    document.head.appendChild(link)
+  }
+  for (const l of LANGUAGES) add('alternate', localePath(l.code, rest), l.code)
+  add('alternate', localePath('en', rest), 'x-default')
+  add('canonical', localePath(lang, rest))
+}
+
+/* ---------- Machine translation ---------- */
+
 const SCRIPT_ID = 'google-translate-script'
 const HOLDER_ID = 'google_translate_element'
-
-/** The language the page is being translated into, read from Google's cookie. 'en' means original. */
-export function currentLanguage(): string {
-  const m = document.cookie.match(/(?:^|;\s*)googtrans=\/[^/]*\/([^;]+)/)
-  return m ? decodeURIComponent(m[1]) : 'en'
-}
 
 function setCookie(value: string | null) {
   const host = location.hostname
@@ -101,30 +151,49 @@ function loadWidget() {
   document.head.appendChild(s)
 }
 
-/** Translate the page into `code`, or back to the original with 'en'. */
-export function setLanguage(code: string) {
-  if (code === 'en') {
-    setCookie(null)
-    // Google has rewritten the DOM; a reload is the only clean way back to the original.
-    if (document.getElementById(SCRIPT_ID)) location.reload()
-    return
-  }
-  setCookie(`/en/${code}`)
-  document.documentElement.lang = code
-  const combo = document.querySelector<HTMLSelectElement>('select.goog-te-combo')
-  if (combo) {
-    combo.value = code
-    combo.dispatchEvent(new Event('change'))
-  } else {
+/** True once Google's translator has been started on this page. */
+export const isTranslating = () => !!document.getElementById(SCRIPT_ID)
+
+/**
+ * Make the page match the language in its address. Sets <html lang> and text direction, and
+ * starts the translator if the language is not English and the reader allowed translation.
+ * Call again when consent changes.
+ */
+export function applyLocale(translationAllowed: boolean) {
+  const lang = currentLanguage()
+  const translate = lang !== 'en' && translationAllowed
+  document.documentElement.lang = translate ? lang : 'en'
+  document.documentElement.dir = translate && getLanguage(lang).rtl ? 'rtl' : 'ltr'
+  if (translate) {
+    setCookie(`/en/${lang}`)
     loadWidget()
+  } else if (!isTranslating()) {
+    setCookie(null)
   }
 }
 
-/** Call once on start-up: if the reader chose a language on an earlier page, carry on in it. */
-export function resumeTranslation() {
-  const code = currentLanguage()
-  if (code !== 'en') {
-    document.documentElement.lang = code
-    loadWidget()
+/* ---------- Suggesting a language ---------- */
+
+/** "Read in French?" written in that language, for the ones we can vouch for. */
+export const READ_IN: Record<string, string> = {
+  fr: 'Lire MirrorActu en français ?',
+  es: '¿Leer MirrorActu en español?',
+  pt: 'Ler o MirrorActu em português?',
+  de: 'MirrorActu auf Deutsch lesen?',
+  sw: 'Soma MirrorActu kwa Kiswahili?',
+  ar: 'هل تريد قراءة MirrorActu بالعربية؟',
+}
+
+/**
+ * A language to offer this reader: the first language their browser asks for that we support
+ * and that is not English, otherwise the first language suggested for their country.
+ */
+export function suggestedLanguage(countryLangs: string[]): Language | null {
+  const wanted = (navigator.languages ?? [navigator.language]).map((l) => l.toLowerCase())
+  if (wanted[0]?.startsWith('en')) return countryLangs[0] ? getLanguage(countryLangs[0]) : null
+  for (const w of wanted) {
+    const match = LANGUAGES.find((l) => l.code !== 'en' && (l.code.toLowerCase() === w || l.code.toLowerCase().split('-')[0] === w.split('-')[0]))
+    if (match) return match
   }
+  return countryLangs[0] ? getLanguage(countryLangs[0]) : null
 }

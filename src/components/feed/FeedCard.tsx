@@ -1,4 +1,5 @@
 import React from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { Bookmark, EyeOff, Heart, Share2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
@@ -156,8 +157,8 @@ export function FeedCard({ story }: { story: Story }) {
       </Link>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
-        <span className="flex items-center gap-1.5"><i aria-hidden="true" className="inline-block size-2.5 bg-ink" />{story.ok.length} confirmed</span>
-        <span className="flex items-center gap-1.5 text-ink"><i aria-hidden="true" className="hatch inline-block size-2.5" />{story.un.length} still open</span>
+        <span className="flex items-center gap-1.5"><i aria-hidden="true" className="inline-block size-2.5 bg-ink" /><CountUp value={story.ok.length} /> confirmed</span>
+        <span className="flex items-center gap-1.5 text-ink"><i aria-hidden="true" className="hatch inline-block size-2.5" /><CountUp value={story.un.length} /> still open</span>
         <span>{story.src.length} {story.src.length > 1 ? 'sources' : 'source'}</span>
       </div>
       <StoryActions story={story} canHide className="-mx-2.5 mt-1.5 sm:-mx-3" />

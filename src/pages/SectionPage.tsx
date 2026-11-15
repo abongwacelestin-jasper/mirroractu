@@ -4,6 +4,7 @@ import { twMerge } from 'tailwind-merge'
 
 import { AdSlot } from '@/components/ads/AdSlot'
 import { LiveWire } from '@/components/live/LiveFeed'
+import { SportHub } from '@/components/sport/SportHub'
 import { useToast } from '@/components/overlays/Toast'
 import { Commodities, Freshness, LeagueTable } from '@/components/live/LiveHub'
 import { StoryCard } from '@/components/story/StoryParts'
@@ -88,12 +89,14 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
             className="group block border-b border-rule pb-4 pt-4 sm:border-b-0 lg:mr-6 lg:border-r lg:pb-6 lg:pr-6 lg:pt-[22px] lg:last:mr-0 lg:last:border-r-0"
           >
             <b className="block text-[28px] font-extrabold leading-none tracking-[-0.04em] tabular-nums transition-colors duration-150 group-hover:text-signal lg:text-[40px]">
-              {value}
+              <CountUp value={value} />
             </b>
             <span className="mt-2 block max-w-[26ch] text-sm text-muted">{caption}</span>
           </Link>
         ))}
       </div>
+
+      {id === 'sport' && <SportHub />}
 
       <div className="sticky top-[96px] z-[5] -mx-[18px] flex items-center justify-between gap-3 border-b border-rule bg-white px-[18px] py-2.5 sm:-mx-6 sm:px-6 lg:top-[68px] lg:mx-0 lg:flex-wrap lg:gap-5 lg:px-0 lg:py-[22px]">
         <div role="tablist" aria-label={`Topics in ${cat.name}`} className="no-scrollbar flex min-w-0 gap-2 overflow-x-auto lg:flex-wrap">
@@ -165,12 +168,6 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
             </SideBlock>
           )}
 
-          {id === 'sport' && (
-            <SideBlock title="Premier League, top four">
-              <LeagueTable rows={EPL_TABLE.slice(0, 4)} full={false} />
-              <p className="mt-3"><TextLink to="/live">All live data</TextLink></p>
-            </SideBlock>
-          )}
           {id === 'business' && (
             <SideBlock title="Commodities">
               <div className="mb-3.5 mt-2.5"><Freshness state="stale">Stale: last updated 6 November</Freshness></div>
@@ -180,14 +177,16 @@ function SectionView({ id }: { id: NonNullable<ReturnType<typeof getCategory>>['
           )}
           {id === 'climate' && (
             <SideBlock title="Global temperature">
-              <div className="mt-2.5 text-[60px] font-extrabold leading-[0.95] tracking-[-0.045em]">+1.75°C</div>
+              <div className="mt-2.5 text-[60px] font-extrabold leading-[0.95] tracking-[-0.045em]"><CountUp value={'+1.75°C'} /></div>
               <p className="mt-1.5 text-[14.5px] text-muted">October 2026 against the pre-industrial estimate. Copernicus, via RMetS.</p>
             </SideBlock>
           )}
 
-          <div className="mb-10 border-t-2 border-ink pt-3">
-            <LiveWire cat={id} max={4} title={`${cat.name} wire`} />
-          </div>
+          {id !== 'sport' && (
+            <div className="mb-10 border-t-2 border-ink pt-3">
+              <LiveWire cat={id} max={4} title={`${cat.name} wire`} />
+            </div>
+          )}
 
           <AdSlot format="mpu" slot={1} placement={`the ${cat.name} section, right-hand column`} className="mb-10" />
 

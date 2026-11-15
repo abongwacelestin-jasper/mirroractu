@@ -9,8 +9,8 @@
  *   VITE_ADSENSE_SLOT_INFEED
  *   VITE_IMA_AD_TAG                a VAST ad tag (Google Ad Manager) for video pre-roll
  *
- * Consent: nothing from Google loads until the reader has made a cookie choice. If they did
- * not allow advertising cookies, adverts are requested as non-personalised.
+ * Consent: nothing from Google loads unless the reader allowed "Advertising by Google"
+ * (lib/consent.ts). Without it the site shows its own adverts and videos play with no pre-roll.
  */
 const env = import.meta.env
 

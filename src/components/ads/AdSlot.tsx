@@ -6,7 +6,7 @@ import { twMerge } from 'tailwind-merge'
 import { ADVERTISERS, Advertiser, offersPath } from '@/data/offers'
 import { AdInfo, useSiteActions } from '@/lib/actions'
 import { ADSENSE_CLIENT, ADSENSE_SLOTS, loadAdSense, requestAdSenseFill } from '@/lib/google'
-import { useStoredValue } from '@/lib/store'
+import { useConsent } from '@/lib/consent'
 import { Bone } from '@/components/loading/Loading'
 import { Modal } from '@/components/overlays/Modal'
 import { Button, TextLink } from '@/components/ui'
@@ -86,9 +86,9 @@ export function AdSlot({
   const [ref, near] = useNearViewport<HTMLElement>()
   const [loaded, setLoaded] = useState(false)
   const [hidden, setHidden] = useState(false)
-  const [consent] = useStoredValue('ma-consent', '')
-  // Google fills this slot when AdSense is configured and the reader has made a cookie choice.
-  const google = !!ADSENSE_CLIENT && !!ADSENSE_SLOTS[format] && !!consent
+  const { allows } = useConsent()
+  // Google fills this slot only when AdSense is configured and the reader allowed advertising by Google.
+  const google = !!ADSENSE_CLIENT && !!ADSENSE_SLOTS[format] && allows('ads')
 
   useEffect(() => {
     if (!near) return
@@ -125,7 +125,7 @@ export function AdSlot({
       </div>
 
       {loaded && google ? (
-        <GoogleAd format={format} personalised={consent === 'all'} fallback={<Creative ad={ad} format={format} />} />
+        <GoogleAd format={format} personalised fallback={<Creative ad={ad} format={format} />} />
       ) : loaded ? (
         <Creative ad={ad} format={format} />
       ) : (
@@ -200,12 +200,12 @@ function Creative({ ad, format }: { ad: CreativeData; format: AdFormat }) {
 /** "About this advert": who paid, why it is here, and what the reader can do about it. */
 export function AdInfoModal({ ad, onClose }: { ad: AdInfo | null; onClose: () => void }) {
   const { openCookieSettings } = useSiteActions()
-  const [consent] = useStoredValue('ma-consent', '')
+  const { allows } = useConsent()
   // Keep the last advert on screen while the modal animates out.
   const last = useRef<AdInfo | null>(null)
   if (ad) last.current = ad
   const info = ad ?? last.current
-  const personalised = consent === 'all'
+  const personalised = allows('ads')
 
   return (
     <Modal open={!!ad} onClose={onClose} title="About this advert">
@@ -221,8 +221,8 @@ export function AdInfoModal({ ad, onClose }: { ad: AdInfo | null; onClose: () =>
               [
                 'Why you see it',
                 personalised
-                  ? 'It was booked for this part of the site. You allowed advertising cookies, so our ad partner may also choose adverts for you.'
-                  : 'It was booked for this part of the site. It is not based on you: advertising cookies are off.',
+                  ? 'It was booked for this part of the site. You allowed advertising by Google, so Google may also choose adverts for you.'
+                  : 'It was booked for this part of the site. It is not based on you: advertising by Google is off.',
               ],
               ['Status', 'Placeholder advertiser. The ad server is not connected in this preview.'],
             ].map(([k, v]) => (

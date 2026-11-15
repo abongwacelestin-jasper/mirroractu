@@ -1,4 +1,5 @@
 import React from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { twMerge } from 'tailwind-merge'
 
 import { EPL_TABLE } from '@/data'
@@ -32,7 +33,7 @@ export function Commodities({ compact = false }: { compact?: boolean }) {
       {rows.map(([label, value, change]) => (
         <React.Fragment key={label}>
           <span>{label}</span>
-          <b className="text-right text-[22px] font-semibold tracking-[-0.02em]">{value}</b>
+          <b className="text-right text-[22px] font-semibold tracking-[-0.02em]"><CountUp value={value} /></b>
           <span className="text-right text-sm text-muted">{change}</span>
         </React.Fragment>
       ))}
@@ -70,7 +71,7 @@ export function LeagueTable({ rows = EPL_TABLE, full = true }: { rows?: typeof E
                   <td className="w-[34%] px-1.5 py-[9px]"><i className="block h-2 bg-ink" style={{ width: `${(pts / 27) * 100}%` }} /></td>
                 </>
               )}
-              <td className="px-1.5 py-[9px] text-right font-semibold">{pts}</td>
+              <td className="px-1.5 py-[9px] text-right font-semibold"><CountUp value={pts} /></td>
             </tr>
           ))}
         </tbody>
@@ -107,7 +108,7 @@ export function LiveHub({ surface = 'white' }: { surface?: 'white' | 'paper' }) 
       <Tile surface={surface} title="Global temperature" className="lg:col-span-3">
         <Freshness>Monthly, published 5 November</Freshness>
         <div>
-          <div className="text-[60px] font-extrabold leading-[0.95] tracking-[-0.045em]">+1.75°C</div>
+          <div className="text-[60px] font-extrabold leading-[0.95] tracking-[-0.045em]"><CountUp value={'+1.75°C'} /></div>
           <p className="mt-3 text-[15px] text-muted">October 2026 against the pre-industrial estimate. The warmest October on record.</p>
         </div>
         <Note>Provider: Copernicus, via RMetS</Note>

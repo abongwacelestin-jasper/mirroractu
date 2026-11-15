@@ -288,3 +288,54 @@ export const offerPath = (advertiser: Advertiser, offer: Offer) => `/offers/${ad
 export const advertisersIn = (category: OfferCategoryId) => ADVERTISERS.filter((a) => a.category === category)
 export const allOffers = () => ADVERTISERS.flatMap((advertiser) => advertiser.offers.map((offer) => ({ advertiser, offer })))
 export const findOffer = (category: string | undefined, offerId: string | undefined) => allOffers().find((x) => x.advertiser.category === category && x.offer.id === offerId)
+
+/* ---------- Reference: real airlines at Kigali ----------
+   Not adverts. These airlines have not paid to appear, and the placeholder fares above are
+   not theirs. Shown so readers can see who actually flies these routes. Routes and
+   timetables change: readers are told to check with the airline. No prices are shown. */
+
+export type Airline = {
+  id: string
+  name: string
+  /** One factual line about the airline */
+  about: string
+  hub: string
+  /** Offer ids (routes above) this airline is known to fly direct from Kigali */
+  routes: string[]
+  image: Media
+}
+
+export const AIRLINES: Airline[] = [
+  {
+    id: 'rwandair',
+    name: 'RwandAir',
+    about: 'Rwanda’s national airline, based at Kigali International Airport.',
+    hub: 'Kigali (KGL)',
+    routes: ['kigali-to-nairobi', 'kigali-to-entebbe', 'kigali-to-johannesburg', 'kigali-to-dar-es-salaam'],
+    image: { src: '/media/offers/rwandair.jpg', alt: 'A RwandAir Boeing 737', credit: 'Bob Adams', licence: 'CC BY-SA 2.0', page: 'https://commons.wikimedia.org/wiki/File:RwandAir_B737-55D_9XR-WE_(8617038800).jpg' },
+  },
+  {
+    id: 'kenya-airways',
+    name: 'Kenya Airways',
+    about: 'Kenya’s national airline. It links Kigali with its hub in Nairobi.',
+    hub: 'Nairobi (NBO)',
+    routes: ['kigali-to-nairobi'],
+    image: { src: '/media/offers/kenya-airways.jpg', alt: 'A Kenya Airways Boeing 787 on the taxiway', credit: 'BriYYZ', licence: 'CC BY-SA 2.0', page: 'https://commons.wikimedia.org/wiki/File:Kenya_Airways_Boeing_787-8_5Y-KZF_(23621400162).jpg' },
+  },
+  {
+    id: 'ethiopian-airlines',
+    name: 'Ethiopian Airlines',
+    about: 'Ethiopia’s national airline. It flies to Kigali from Addis Ababa, with onward connections across Africa.',
+    hub: 'Addis Ababa (ADD)',
+    routes: [],
+    image: { src: '/media/offers/ethiopian.jpg', alt: 'An Ethiopian Airlines Boeing 787 coming in to land', credit: 'Aminul Islam Shifat', licence: 'CC BY 4.0', page: 'https://commons.wikimedia.org/wiki/File:Ethiopian_Airlines_Boeing_787_8.jpg' },
+  },
+]
+
+/** More aircraft and airport photographs for the Flights page. */
+export const FLIGHT_GALLERY: Media[] = [
+  { src: '/media/offers/kigali-airport.jpg', alt: 'The terminal at Kigali International Airport', credit: 'SteveRwanda', licence: 'CC BY-SA 3.0', page: 'https://commons.wikimedia.org/wiki/File:KigaliAirport.jpg' },
+  { src: '/media/offers/rwandair-a330.jpg', alt: 'A RwandAir Airbus A330 at London Heathrow', credit: 'Mike Peel', licence: 'CC BY-SA 4.0', page: 'https://commons.wikimedia.org/wiki/File:Airbus_A330-300_9XR-WP_of_RwandAir_Heathrow_2024H.jpg' },
+]
+
+export const airlinesOn = (offerId: string) => AIRLINES.filter((a) => a.routes.includes(offerId))

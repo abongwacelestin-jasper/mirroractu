@@ -1,4 +1,5 @@
 import React from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -24,7 +25,7 @@ export function BriefPage() {
         aside={
           <div className="w-full lg:w-[300px]">
             <p className="text-[13px] text-mirror">Your progress</p>
-            <p className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums">{done} of {stories.length} read</p>
+            <p className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums"><CountUp value={done} /> of {stories.length} read</p>
             <div role="progressbar" aria-valuemin={0} aria-valuemax={stories.length} aria-valuenow={done} aria-label="Brief stories read" className="mt-2 flex gap-1">
               {stories.map((s) => <i key={s.id} className={twMerge('block h-1.5 flex-1', read.includes(s.id) ? 'bg-signal' : 'bg-mirror/30')} />)}
             </div>

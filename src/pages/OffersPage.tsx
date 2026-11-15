@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { ArrowRight, BedDouble, CalendarDays, Check, Info, Landmark, Plane } from 'lucide-react'
 import { Link, NavLink, useLocation, useParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
@@ -7,7 +8,7 @@ import { AdTag } from '@/components/ads/AdSlot'
 import { EmailField } from '@/components/layout/Footer'
 import { Container, Hl, PageHeader, TextLink } from '@/components/ui'
 import type { Media } from '@/data/media'
-import { ADVERTISERS, Advertiser, OFFER_CATEGORIES, Offer, OfferCategoryId, findOffer, offerPath, offersPath } from '@/data/offers'
+import { ADVERTISERS, AIRLINES, Advertiser, FLIGHT_GALLERY, OFFER_CATEGORIES, Offer, OfferCategoryId, airlinesOn, findOffer, offerPath, offersPath } from '@/data/offers'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 const ICONS: Record<OfferCategoryId, React.ComponentType<{ className?: string }>> = {
@@ -162,6 +163,7 @@ export function OffersPage() {
                 <HowItWorks advertiser={a} />
               </React.Fragment>
             ))}
+            {current.id === 'flights' && <Airlines />}
             <OtherCategories except={current.id} />
           </>
         ) : (
@@ -190,6 +192,46 @@ export function OffersPage() {
   )
 }
 
+/**
+ * Reference, not advertising: the real airlines that fly from Kigali, with their aircraft.
+ * They have not paid to appear and the placeholder fares on this page are not theirs.
+ */
+function Airlines() {
+  return (
+    <section id="airlines" aria-label="Airlines flying from Kigali" className="mt-14 scroll-mt-40">
+      <div className="border-t-2 border-ink pt-4">
+        <h2 className="text-[26px] font-extrabold tracking-[-0.03em]">Airlines flying from Kigali</h2>
+        <p className="mt-1.5 max-w-[80ch] text-[14.5px] text-muted">
+          <span className="mr-2 inline-block bg-paper-2 px-1.5 py-[3px] font-mono text-[10.5px] uppercase leading-none tracking-[0.14em] text-ink">Reference</span>
+          For information, not an advert. These airlines have not paid to appear and the fares above are not theirs. Routes and timetables change, so check with the airline.
+        </p>
+      </div>
+      <ul className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {AIRLINES.map((a) => (
+          <li key={a.id} data-reveal className="group flex flex-col border border-rule bg-white">
+            <Photo image={a.image} ratio="aspect-[16/9]" />
+            <div className="flex flex-1 flex-col p-4">
+              <h3 className="text-[22px] leading-tight">{a.name}</h3>
+              <p className="mt-1 text-[14.5px] text-muted">{a.about}</p>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-rule pt-3 text-[13.5px]">
+                <dt className="text-muted">Hub</dt><dd>{a.hub}</dd>
+                <dt className="text-muted">From Kigali</dt>
+                <dd>{a.routes.length ? ADVERTISERS.flatMap((x) => x.offers).filter((o) => a.routes.includes(o.id)).map((o) => o.title.replace('Kigali to ', '')).join(', ') : a.hub.split(' (')[0]}</dd>
+              </dl>
+              <p className="mt-auto pt-3 text-[11.5px] leading-snug text-muted">
+                File photo: {a.image.alt}. <a href={a.image.page} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-ink">{a.image.credit}, {a.image.licence}</a>
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        {FLIGHT_GALLERY.map((m) => <Photo key={m.src} image={m} ratio="aspect-[2/1]" credit className="group" />)}
+      </div>
+    </section>
+  )
+}
+
 /** Side-by-side comparison of an advertiser's offers, one row per fact. */
 function Compare({ advertiser }: { advertiser: Advertiser }) {
   const labels = [...new Set(advertiser.offers.flatMap((o) => o.facts.map((f) => f[0])))]
@@ -212,7 +254,7 @@ function Compare({ advertiser }: { advertiser: Advertiser }) {
             <tr className="border-t border-ink bg-paper/60">
               <th className="py-2.5 pl-2 text-left text-[13px] font-medium text-muted">Price</th>
               {advertiser.offers.map((o) => (
-                <td key={o.id} className="py-2.5 pl-4"><b className="text-[18px] font-extrabold tabular-nums">{o.price}</b><span className="block text-[12px] text-muted">{o.priceNote}</span></td>
+                <td key={o.id} className="py-2.5 pl-4"><b className="text-[18px] font-extrabold tabular-nums"><CountUp value={o.price} /></b><span className="block text-[12px] text-muted">{o.priceNote}</span></td>
               ))}
             </tr>
             {labels.map((label) => (
@@ -339,7 +381,7 @@ export function OfferPage() {
             <div>
               <div className="p-6" style={{ background: advertiser.bg, color: advertiser.fg }}>
                 <p className="text-[13px] opacity-85">{advertiser.name}</p>
-                <p className="mt-1 text-[52px] font-extrabold leading-none tracking-[-0.04em] tabular-nums">{offer.price}</p>
+                <p className="mt-1 text-[52px] font-extrabold leading-none tracking-[-0.04em] tabular-nums"><CountUp value={offer.price} /></p>
                 <p className="mt-1.5 text-[14.5px] opacity-90">{offer.priceNote}</p>
                 <p className="mt-4 border-t pt-3 text-[14px]" style={{ borderColor: `${advertiser.accent}55` }}>{offer.terms}</p>
               </div>
@@ -355,6 +397,26 @@ export function OfferPage() {
                   </li>
                 ))}
               </ol>
+
+              {airlinesOn(offer.id).length > 0 && (
+                <section aria-label="Airlines on this route" className="mt-6">
+                  <h2 className="border-t-2 border-ink pt-3 text-base tracking-normal">Airlines that fly this route</h2>
+                  <p className="mt-1 text-[12.5px] text-muted">Reference, not an advert. The fare above is not theirs.</p>
+                  <ul className="mt-1">
+                    {airlinesOn(offer.id).map((a) => (
+                      <li key={a.id} className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-3 border-b border-rule py-2.5">
+                        <Photo image={a.image} ratio="aspect-[16/10]" />
+                        <span className="min-w-0">
+                          <span className="block text-[15.5px] font-semibold leading-tight">{a.name}</span>
+                          <span className="block text-[13px] text-muted">Hub: {a.hub}</span>
+                          <a href={a.image.page} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muted underline underline-offset-2">Photo: {a.image.credit}, {a.image.licence}</a>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2"><TextLink to="/offers/flights#airlines" className="text-[13.5px]">All airlines at Kigali</TextLink></p>
+                </section>
+              )}
 
               {others.length > 0 && (
                 <section aria-label={`Also from ${advertiser.name}`} className="mt-6">

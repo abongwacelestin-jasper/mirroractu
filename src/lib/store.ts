@@ -67,3 +67,33 @@ export function useReadStories(): [string[], (id: string) => void] {
 export const useLikedStories = () => useToggleList('ma-liked')
 /** Stories the reader asked not to see in their feed. */
 export const useHiddenStories = () => useToggleList('ma-hidden')
+
+/* ---------- The reader's data on this device ---------- */
+
+/** Every value this site keeps in the browser, keyed by its storage name. */
+export function storedData(): Record<string, string> {
+  const out: Record<string, string> = {}
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k?.startsWith('ma-')) out[k] = localStorage.getItem(k) ?? ''
+    }
+  } catch {
+    Object.assign(out, memory)
+  }
+  return out
+}
+
+/** Remove everything this site stored, including Google Translate's language cookie. */
+export function eraseStoredData() {
+  for (const k of Object.keys(storedData())) {
+    delete memory[k]
+    try {
+      localStorage.removeItem(k)
+    } catch {
+      /* storage blocked */
+    }
+  }
+  document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  listeners.forEach((l) => l())
+}

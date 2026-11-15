@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { ArrowDown, ArrowUp, Minus, Play } from 'lucide-react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
@@ -51,7 +52,7 @@ export function TrendsPage() {
                 {trends.filter((t) => t.activeNow).slice(0, 4).map((t) => (
                   <li key={t.id} className="flex items-center justify-between gap-3 border-b border-rule py-2.5 text-[15px]">
                     <a href={`#trend-${t.id}`} className="font-semibold decoration-signal decoration-2 underline-offset-4 hover:underline">{t.label}</a>
-                    <span className="text-[12.5px] text-muted tabular-nums">{t.wireCount} updates</span>
+                    <span className="text-[12.5px] text-muted tabular-nums"><CountUp value={t.wireCount} /> updates</span>
                   </li>
                 ))}
               </ul>
@@ -82,7 +83,7 @@ function TrendMeta({ trend, dark = false }: { trend: Trend; dark?: boolean }) {
   return (
     <p className={twMerge('flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]', dark ? 'text-mirror' : 'text-muted')}>
       <span>{categoryName(trend.cat)}</span>
-      <span>{trend.stories.length} {trend.stories.length > 1 ? 'stories' : 'story'}</span>
+      <span><CountUp value={trend.stories.length} /> {trend.stories.length > 1 ? 'stories' : 'story'}</span>
       {trend.activeNow && (
         <span className="flex items-center gap-1.5 font-semibold text-signal">
           <span className="relative flex size-2"><span className="absolute inset-0 rounded-full bg-signal opacity-60 motion-safe:animate-ping" /><span className="relative size-2 rounded-full bg-signal" /></span>

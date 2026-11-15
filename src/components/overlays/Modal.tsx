@@ -16,6 +16,7 @@ export function Modal({
   className,
   tone = 'light',
   center = false,
+  dismissible = true,
 }: {
   open: boolean
   onClose: () => void
@@ -25,17 +26,21 @@ export function Modal({
   tone?: 'light' | 'dark'
   /** Centre on every screen. By default a dialog is a bottom sheet on phones. */
   center?: boolean
+  /** False for a choice that must be made: no close button, Escape and the backdrop do nothing. */
+  dismissible?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const closeRef = useRef(onClose)
   closeRef.current = onClose
+  const dismissRef = useRef(dismissible)
+  dismissRef.current = dismissible
 
   useEffect(() => {
     if (!open) return
     const before = document.activeElement as HTMLElement | null
     panel.current?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return closeRef.current()
+      if (e.key === 'Escape') return dismissRef.current && closeRef.current()
       if (e.key !== 'Tab' || !panel.current) return
       // Keep Tab inside the dialog.
       const items = panel.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])')
@@ -71,7 +76,7 @@ export function Modal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: EASE }}
-          onClick={(e) => e.target === e.currentTarget && onClose()}
+          onClick={(e) => e.target === e.currentTarget && dismissible && onClose()}
           className={twMerge('fixed inset-0 z-[60] flex justify-center bg-ink/60 backdrop-blur-[3px] sm:items-center sm:p-6', center ? 'items-center p-3' : 'items-end p-0')}
         >
           <motion.div
@@ -90,17 +95,19 @@ export function Modal({
               className
             )}
           >
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className={twMerge(
-                'absolute right-4 top-4 flex size-9 items-center justify-center rounded-full text-xl transition-colors duration-150',
-                tone === 'dark' ? 'text-mirror hover:bg-white/10 hover:text-white' : 'text-muted hover:bg-ink/5 hover:text-ink'
-              )}
-            >
-              ×
-            </button>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className={twMerge(
+                  'absolute right-4 top-4 flex size-9 items-center justify-center rounded-full text-xl transition-colors duration-150',
+                  tone === 'dark' ? 'text-mirror hover:bg-white/10 hover:text-white' : 'text-muted hover:bg-ink/5 hover:text-ink'
+                )}
+              >
+                ×
+              </button>
+            )}
             {children}
           </motion.div>
         </motion.div>

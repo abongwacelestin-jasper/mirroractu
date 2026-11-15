@@ -1,4 +1,5 @@
 import React from 'react'
+import { CountUp } from '@/components/ui/CountUp'
 import { twMerge } from 'tailwind-merge'
 
 import { NBA_RESULTS, Story, VIZ } from '@/data'
@@ -33,7 +34,7 @@ export function Viz({ story, tone = 'paper', className }: { story: Story; tone?:
               <span className="relative h-4">
                 <i className={twMerge('absolute inset-y-0 left-0', hi ? 'bg-current' : 'hatch')} style={{ width: `${(value / max) * 100}%` }} />
               </span>
-              <span className={twMerge('text-right', hi && 'font-semibold')}>{shown}</span>
+              <span className={twMerge('text-right', hi && 'font-semibold')}><CountUp value={shown} /></span>
             </React.Fragment>
           ))}
         </div>
@@ -60,7 +61,7 @@ export function Viz({ story, tone = 'paper', className }: { story: Story; tone?:
                     style={value < 0 ? { right: `${100 - axis}%`, width: `${w}%` } : { left: `${axis}%`, width: `${w}%` }}
                   />
                 </span>
-                <span className="text-right font-semibold">{shown}</span>
+                <span className="text-right font-semibold"><CountUp value={shown} /></span>
               </React.Fragment>
             )
           })}
@@ -76,7 +77,7 @@ export function Viz({ story, tone = 'paper', className }: { story: Story; tone?:
           <i className="absolute inset-y-0 left-0 bg-current" style={{ width: `${v.p}%` }} />
         </div>
         <div className="mt-2.5 flex justify-between text-[13.5px]">
-          <span><b className="text-[22px] font-semibold">{v.p}%</b> funded</span>
+          <span><b className="text-[22px] font-semibold"><CountUp value={`${v.p}%`} /></b> funded</span>
           <span>$2.9bn needed</span>
         </div>
         {src(v.src)}
@@ -85,7 +86,7 @@ export function Viz({ story, tone = 'paper', className }: { story: Story; tone?:
   } else if (v.k === 'fig') {
     body = (
       <div>
-        <b className="block text-[52px] font-extrabold leading-[0.95] tracking-[-0.045em] sm:text-[64px]">{v.n}</b>
+        <b className="block text-[52px] font-extrabold leading-[0.95] tracking-[-0.045em] sm:text-[64px]"><CountUp value={v.n} /></b>
         <span className={twMerge('mt-2.5 block max-w-[30ch] text-sm', sub)}>{v.c}</span>
       </div>
     )
@@ -103,8 +104,8 @@ export function Viz({ story, tone = 'paper', className }: { story: Story; tone?:
           </div>
         </div>
         <div className="mt-3 flex justify-between gap-3 text-[13.5px]">
-          <div><b className="block text-[22px] font-semibold tracking-[-0.02em]">67</b>Governing coalition</div>
-          <div className="text-right"><b className="block text-[22px] font-semibold tracking-[-0.02em]">57</b>Labour, Greens, Māori Party</div>
+          <div><b className="block text-[22px] font-semibold tracking-[-0.02em]"><CountUp value={67} /></b>Governing coalition</div>
+          <div className="text-right"><b className="block text-[22px] font-semibold tracking-[-0.02em]"><CountUp value={57} /></b>Labour, Greens, Māori Party</div>
         </div>
         {src('Xinhua, 8 Nov. Seven seats sit outside both blocs. Final count 27 Nov.')}
       </>
@@ -170,8 +171,8 @@ export function NbaScores({ dark = false }: { dark?: boolean }) {
           )}
         >
           <b className="font-semibold">{home}</b>
-          <b className="text-right font-semibold">{hs}</b>
-          <span>{as}</span>
+          <b className="text-right font-semibold"><CountUp value={hs} /></b>
+          <span><CountUp value={as} /></span>
           <span className={dark ? 'text-mirror' : 'text-muted'}>{away}</span>
         </div>
       ))}

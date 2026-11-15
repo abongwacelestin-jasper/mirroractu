@@ -37,6 +37,7 @@ src/
     media/                 VideoPlayer (poster, play, optional Google pre-roll)
     feed/                  Feed (For you / Following / Latest, new-updates prompt, endless scroll),
                            FeedCard, Rails (your edition, desks to follow, happening now)
+    sport/                 SportHub (scoreboard: competitions, table, results, fixtures, sport wire)
     story/                 StoryParts (cards, rows, Confirmed / Still open ledger), Viz (charts),
                            StoryImage (photos and video with credits)
     ui/                    Container, Button, TextLink, Pill, PageHeader and other basics
@@ -51,9 +52,10 @@ src/
     feed.ts                live feed store (wire + market quotes): the seam to swap for websockets
   lib/
     search.ts              search index, scoring, filters and search URLs
+    consent.ts             the reader's privacy choice and what it gates
     google.ts              Google AdSense and IMA video adverts, switched on by env variables
     edition.ts             the reader's country edition (choice, geo lookup, time zone)
-    translate.ts           on-demand Google translation of the page
+    translate.ts           language in the address (/fr/…), hreflang links, Google translation
     store.ts               saved stories, followed desks, read history, text size, consent (localStorage)
     share.ts               share sheet or copy link
     actions.ts             useSiteActions(): open search, newsletter, cookie settings, advert info, corrections
@@ -65,6 +67,9 @@ src/
 Imports use the `@/` alias for `src/`, e.g. `import { AdSlot } from '@/components/ads/AdSlot'`.
 
 ## Routes
+
+Every route below also exists under a language prefix: `/fr/trends`, `/sw/story/…`, `/en/brief`.
+An address with no prefix is English. See *Language in the address*.
 
 | URL | Page |
 |---|---|
@@ -110,8 +115,10 @@ edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
   For production put your own Google Ad Manager tag in the host's environment settings.
 - **Google display adverts**: set `VITE_ADSENSE_CLIENT` and the four `VITE_ADSENSE_SLOT_*` ids (see `.env.example`)
   and every ad slot is filled by AdSense instead of the placeholder creatives.
-- **Consent**: nothing from Google loads before the reader's cookie choice; without advertising consent, adverts
-  are requested as non-personalised. If Google's script is blocked, the video just plays and slots fall back.
+- **Consent**: Google adverts load only for readers who allowed *Advertising by Google*. Everyone else sees the
+  house adverts and videos play with no pre-roll. If Google's script is blocked, the same fallback applies.
+- **Flights reference**: `AIRLINES` in `src/data/offers.ts` lists real airlines at Kigali with aircraft photos. It is
+  labelled as reference, not advertising, and carries no prices.
 
 ## Search and addresses
 
@@ -120,6 +127,29 @@ edit `src/data/media.generated.ts` (photos) or `VIDEOS` in `src/data/media.ts`.
   desk / date / order filters, voice input where the browser supports it, recent searches and arrow-key navigation.
   The dialog (press `/`) and the `/search` page share the same panel.
 - **Slugs**: story addresses come from `slugify()` in `src/data/index.ts`; ids never appear in links.
+
+## Privacy and ethics
+
+- **Consent** (`src/lib/consent.ts`, `ConsentModal`): a centred dialog on first visit that stays until the reader
+  chooses. *Deny all* and *Accept all* are identical in size and colour, no purpose is pre-ticked, the choice is
+  asked again after six months, and the browser's Global Privacy Control signal is honoured. Reopen it from
+  *Cookie settings* in the footer.
+- **What it gates**: `ads` (Google AdSense and Google video adverts; denied means house adverts only and no
+  pre-roll), `translation` (Google Translate), `measurement` (nothing loads for it yet).
+- **Your data** (`/legal#your-data`): lists everything stored in the browser, with *Download a copy* and
+  *Erase everything*. There are no accounts and nothing is kept on a server.
+- **Stated in public**: `/how-we-work#ethics` lists these commitments for readers.
+
+## Language in the address
+
+- `src/lib/translate.ts` reads the language from the first part of the address and `main.tsx` mounts the router
+  on it, so every link keeps the reader in their language. Changing language is a move to the same page under
+  another prefix.
+- Each page carries `hreflang` links for all 26 languages and a canonical link, for search engines.
+- Translation is machine translation by Google, and only runs if the reader allowed it. Someone who opens a
+  shared `/fr/…` link without having allowed it sees the English page and a bar asking first.
+- A one-time bar offers the reader's own language (from their browser language, then their country).
+- When real translated editions exist, serve them at these same addresses and drop the widget.
 
 ## Country editions and language
 
@@ -143,7 +173,7 @@ All motion is switched off for readers who ask their device for reduced motion.
 - **Buttons**: every button gives a little when pressed; solid buttons lift and glow on hover (`styles/index.css`, `buttonClass`).
 - **Feedback**: the heart pops and bursts on Like, the bookmark pops on Save, the tab-bar marker slides between tabs.
 - **Loading**: skeletons shimmer; photos fade in from a blur; page titles rise and the signal axis draws itself.
-- **Numbers**: `CountUp` counts figures up as they come into view; market quotes flash when they change.
+- **Numbers**: `CountUp` counts any figure up from zero as it scrolls into view ("52%", "$4,074", "+1.75°C"); dates and times are left alone. Market quotes flash when they change.
 - **Pages** fade in on navigation.
 
 ## Phones first

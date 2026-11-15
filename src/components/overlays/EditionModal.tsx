@@ -6,13 +6,16 @@ import { Modal } from '@/components/overlays/Modal'
 import { useToast } from '@/components/overlays/Toast'
 import { COUNTRIES, storiesNear } from '@/data/countries'
 import { useEdition } from '@/lib/edition'
-import { LANGUAGES, currentLanguage, getLanguage, setLanguage } from '@/lib/translate'
+import { useConsent } from '@/lib/consent'
+import { useStoredValue } from '@/lib/store'
+import { LANGUAGES, READ_IN, currentLanguage, getLanguage, localePath, setLanguage, suggestedLanguage } from '@/lib/translate'
 
 /** Choose the country edition and the reading language. */
 export function EditionModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [country, setCountry, { chosen, reset }] = useEdition()
   const toast = useToast()
   const [lang, setLang] = useState(currentLanguage)
+  const { grant } = useConsent()
   const [allLangs, setAllLangs] = useState(false)
 
   // Suggested languages for this country first, then the rest.
@@ -53,7 +56,7 @@ export function EditionModal({ open, onClose }: { open: boolean; onClose: () => 
       <h2 className="mt-7 flex items-center gap-2.5 border-t border-rule pt-5 text-[22px] font-extrabold tracking-[-0.03em]"><Languages className="size-5" /> Language</h2>
       <p className="mt-1.5 text-[13.5px] text-muted">
         MirrorActu is written in English. Other languages are machine translated by Google Translate: choosing one sends the page text to Google, and
-        names, figures and quotes may be wrong. Check the English original before relying on a detail.
+        names, figures and quotes may be wrong. Each language has its own address, such as <span className="font-mono text-[12.5px]">{localePath(lang === 'en' ? country.langs[0] ?? 'fr' : lang, '/trends')}</span>.
       </p>
       <div className="mt-4 flex flex-wrap gap-1.5" translate="no">
         {langs.map((l) => (
@@ -63,11 +66,9 @@ export function EditionModal({ open, onClose }: { open: boolean; onClose: () => 
             aria-pressed={lang === l.code}
             onClick={() => {
               setLang(l.code)
+              // Choosing a language is the reader asking for translation.
+              if (l.code !== 'en') grant('translation')
               setLanguage(l.code)
-              if (l.code !== 'en') {
-                toast(`Translating into ${l.name}`)
-                onClose()
-              }
             }}
             className={twMerge(
               'rounded-full border border-rule px-3.5 py-1.5 text-[14.5px] font-semibold transition-colors duration-150 hover:border-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-white'
@@ -88,16 +89,67 @@ export function EditionModal({ open, onClose }: { open: boolean; onClose: () => 
   )
 }
 
-/** Thin bar shown while the page is machine translated: says so, credits Google, offers the original. */
+/**
+ * The bar under the masthead when the address asks for another language.
+ *  - Translation allowed: says the page is machine translated by Google and offers the original.
+ *  - Not allowed (yet): asks before anything is sent to Google, so a shared /fr/ link never
+ *    translates a page for someone who has not agreed to it.
+ */
 export function TranslationBar() {
+  const { decided, allows, grant } = useConsent()
   const lang = currentLanguage()
   if (lang === 'en') return null
+  const language = getLanguage(lang)
+  const on = allows('translation')
   return (
     <div className="border-b border-rule bg-dew/25 text-[13px]" translate="no">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-1 px-[18px] py-2 sm:px-6 lg:px-10">
-        <span className="flex items-center gap-2 font-semibold"><Languages className="size-4" /> Machine translated into {getLanguage(lang).native} by Google Translate</span>
-        <span className="text-muted">Names and figures may be wrong.</span>
-        <button type="button" onClick={() => setLanguage('en')} className="ml-auto font-semibold underline decoration-signal decoration-2 underline-offset-4">Show original English</button>
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-1.5 px-[18px] py-2 sm:px-6 lg:px-10">
+        <span className="flex items-center gap-2 font-semibold">
+          <Languages className="size-4" />
+          {on ? `Machine translated into ${language.native} by Google Translate` : `This address is the ${language.name} edition (${language.native})`}
+        </span>
+        <span className="text-muted">{on ? 'Names and figures may be wrong.' : 'It is machine translated: the page text would be sent to Google Translate.'}</span>
+        <span className="ml-auto flex flex-wrap gap-x-4 gap-y-1">
+          {!on && decided && (
+            <button type="button" onClick={() => grant('translation')} className="font-semibold underline decoration-signal decoration-2 underline-offset-4">Translate into {language.native}</button>
+          )}
+          <button type="button" onClick={() => setLanguage('en')} className="font-semibold underline decoration-signal decoration-2 underline-offset-4">{on ? 'Show original English' : 'Read in English'}</button>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Offers the reader's own language once, in that language where we can. It only offers:
+ * nothing is translated, and nothing goes to Google, unless they say yes.
+ */
+export function LanguageSuggestion({ enabled }: { enabled: boolean }) {
+  const [country] = useEdition()
+  const { grant } = useConsent()
+  const [dismissed, setDismissed] = useStoredValue('ma-lang-offer', '')
+  if (!enabled || dismissed || currentLanguage() !== 'en') return null
+  const language = suggestedLanguage(country.langs)
+  if (!language) return null
+  return (
+    <div className="border-b border-rule bg-paper text-[13.5px]" translate="no">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-1.5 px-[18px] py-2 sm:px-6 lg:px-10">
+        <span className="flex items-center gap-2 font-semibold"><Languages className="size-4" /> {READ_IN[language.code] ?? `Read MirrorActu in ${language.native}?`}</span>
+        <span className="text-muted">Machine translated by Google Translate.</span>
+        <span className="ml-auto flex gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setDismissed('1')
+              grant('translation')
+              setLanguage(language.code)
+            }}
+            className="font-semibold underline decoration-signal decoration-2 underline-offset-4"
+          >
+            {language.native}
+          </button>
+          <button type="button" onClick={() => setDismissed('1')} className="text-muted hover:text-ink">No thanks</button>
+        </span>
       </div>
     </div>
   )

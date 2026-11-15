@@ -5,7 +5,8 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { AdInfo, SiteActions, SiteActionsContext } from '@/lib/actions'
 import { dismissBoot, hasBootSplash } from '@/lib/boot'
 import { initReveal } from '@/lib/reveal'
-import { resumeTranslation } from '@/lib/translate'
+import { useConsent } from '@/lib/consent'
+import { alternateLinks, applyLocale } from '@/lib/translate'
 import { usePreviewState } from '@/lib/preview'
 import { useStoredValue } from '@/lib/store'
 import { AdInfoModal, AnchorAd } from '@/components/ads/AdSlot'
@@ -14,8 +15,9 @@ import { LiveAlert, LiveBar } from '@/components/live/LiveFeed'
 import { BrandSplash, PageSkeleton, SkeletonKind } from '@/components/loading/Loading'
 import { Masthead } from '@/components/layout/Masthead'
 import { TabBar } from '@/components/layout/TabBar'
-import { CookieConsent, CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
-import { EditionModal, TranslationBar } from '@/components/overlays/EditionModal'
+import { ConsentModal } from '@/components/overlays/ConsentModal'
+import { CorrectionModal, NewsletterModal, WelcomeModal } from '@/components/overlays/Popups'
+import { EditionModal, LanguageSuggestion, TranslationBar } from '@/components/overlays/EditionModal'
 import { HousePromo } from '@/components/overlays/HousePromo'
 import { TrendsModal } from '@/components/overlays/TrendsModal'
 import { SearchDialog } from '@/components/layout/SearchDialog'
@@ -56,7 +58,8 @@ export function Layout() {
   const [adInfo, setAdInfo] = useState<AdInfo | null>(null)
   const [correction, setCorrection] = useState<{ open: boolean; storyTitle?: string }>({ open: false })
   const [nlSeen, setNlSeen] = useStoredValue('ma-nl-seen', '')
-  const [consent] = useStoredValue('ma-consent', '')
+  const { decided: consent, allows } = useConsent()
+  const translationAllowed = allows('translation')
   const first = useRef(true)
 
   const actions = useMemo<SiteActions>(
@@ -75,11 +78,14 @@ export function Layout() {
 
   useEffect(() => {
     dismissBoot()
-    resumeTranslation()
     initReveal()
     const t = window.setTimeout(() => setBooting(false), SPLASH_MS)
     return () => window.clearTimeout(t)
   }, [])
+
+  // The page follows the language in its address, once the reader has allowed translation.
+  useEffect(() => applyLocale(translationAllowed), [translationAllowed])
+  useEffect(() => alternateLinks(), [pathname])
 
   // Each navigation shows the skeleton for the incoming page while it loads.
   useEffect(() => {
@@ -126,7 +132,7 @@ export function Layout() {
   const showSplash = preview === 'splash' || (preview === 'live' && booting)
   const showSkeleton = preview === 'skeleton' || (preview === 'live' && routeLoading)
   const skeleton = <PageSkeleton kind={skeletonFor(pathname)} />
-  const popupsAllowed = preview === 'live' && !!consent
+  const popupsAllowed = preview === 'live' && consent
 
   return (
     <ToastProvider>
@@ -139,6 +145,7 @@ export function Layout() {
           <Masthead onSearch={() => actions.openSearch()} onSubscribe={actions.openNewsletter} />
           <LiveBar />
           <TranslationBar />
+          <LanguageSuggestion enabled={popupsAllowed} />
           <SearchDialog
             open={search.open}
             query={search.query}
@@ -184,7 +191,7 @@ export function Layout() {
           <EditionModal open={edition} onClose={() => setEdition(false)} />
           <AdInfoModal ad={adInfo} onClose={() => setAdInfo(null)} />
           <CorrectionModal open={correction.open} storyTitle={correction.storyTitle} onClose={() => setCorrection((c) => ({ ...c, open: false }))} />
-          {preview !== 'splash' && <CookieConsent forceOpen={preview === 'cookies'} settingsOpen={cookieSettings} onSettings={setCookieSettings} />}
+          {preview === 'live' && <ConsentModal settingsOpen={cookieSettings} onSettings={setCookieSettings} />}
           <AnchorAd enabled={popupsAllowed && !isAdFree(pathname)} />
           <LiveAlert enabled={popupsAllowed} />
           <HousePromo enabled={popupsAllowed && !!welcomeSeen && !welcome && !newsletter && !edition && !trends} />

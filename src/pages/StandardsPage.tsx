@@ -20,6 +20,7 @@ const NAV: [string, string][] = [
   ['corrections', 'Corrections'],
   ['advertising', 'Advertising'],
   ['live-data', 'Live data'],
+  ['ethics', 'Ethics and your data'],
   ['faq', 'Questions'],
   ['status', 'Status and contact'],
 ]
@@ -70,6 +71,18 @@ const AD_RULES = [
 ]
 
 type FreshState = 'fresh' | 'stale' | 'off'
+const ETHICS: [string, string][] = [
+  ['You choose first', 'Nothing optional runs before you decide. Deny is one tap and the same size as Accept, and no box is ticked for you.'],
+  ['Your choice does not last for ever', 'We ask again after six months, and you can change it any time under Cookie settings.'],
+  ['We honour Global Privacy Control', 'If your browser sends the signal, advertising by Google stays off unless you switch it on.'],
+  ['Your data stays with you', 'Saved stories, likes, reading history and your edition live in your browser. You can download or erase them.'],
+  ['Google only with permission', 'Google adverts and Google Translate load only if you allow them. Otherwise you see our own adverts and the English original.'],
+  ['Machine translation is labelled', 'A translated page says so, credits Google, and offers the English original in one tap.'],
+  ['No invented numbers', 'Trends are ranked by our coverage, not by tracking readers. We show no like or view counts we cannot stand behind.'],
+  ['Pictures are what they say', 'Photographs are labelled as file photos, with the photographer and licence.'],
+  ['Motion is optional', 'Animation switches off if your device asks for reduced motion.'],
+]
+
 const FRESH_LEGEND: [FreshState, string, string][] = [
   ['fresh', 'Within its window', 'The provider delivered on time. The label gives the date of the data.'],
   ['stale', 'Stale', 'The provider missed its window. The figure stays visible with its age, never shown as current.'],
@@ -131,7 +144,7 @@ function useFigures() {
 
 export function StandardsPage() {
   const { hash } = useLocation()
-  const { openCorrection } = useSiteActions()
+  const { openCorrection, openCookieSettings } = useSiteActions()
   const f = useFigures()
   const active = useActiveSection(NAV.map(([id]) => id))
 
@@ -245,7 +258,7 @@ export function StandardsPage() {
                     <div className="text-[14.5px] md:text-right">
                       <Label>Approved by</Label>
                       <b className="font-semibold">{info.who}</b>
-                      <span className="block text-muted tabular-nums">{t === 'blocked' ? 'Never shown' : `${list.length} stories now`}</span>
+                      <span className="block text-muted tabular-nums">{t === 'blocked' ? 'Never shown' : <><CountUp value={list.length} /> stories now</>}</span>
                     </div>
                     {list[0] && (
                       <Link to={storyPath(list[0].id)} className="group text-[14px] text-muted md:col-span-3 md:col-start-2">
@@ -283,7 +296,7 @@ export function StandardsPage() {
                     <li key={role} className="grid grid-cols-[1fr_auto] items-center gap-x-3 text-[14.5px]">
                       <span className="col-span-2 flex justify-between gap-3">
                         {role}
-                        <span className="tabular-nums text-muted">{n}</span>
+                        <span className="tabular-nums text-muted"><CountUp value={n} /></span>
                       </span>
                       <i aria-hidden="true" className="col-span-2 block h-1.5 bg-ink" style={{ width: `${(n / f.roles[0][1]) * 100}%` }} />
                     </li>
@@ -388,11 +401,26 @@ export function StandardsPage() {
             <p className="mt-5"><TextLink to="/live">Open live data</TextLink></p>
           </Block>
 
-          <Block n={9} id="faq" title="Questions readers ask">
+          <Block n={9} id="ethics" title="Ethics and your data" lede="What we promise about privacy, honesty and how the site treats you. Each of these is built into the site, not just written here.">
+            <ul className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3">
+              {ETHICS.map(([t, d]) => (
+                <li key={t} className="border-t border-ink py-3.5">
+                  <b className="block text-[16.5px] font-semibold leading-snug">{t}</b>
+                  <span className="mt-1 block text-[14.5px] text-muted">{d}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              <Button size="sm" onClick={openCookieSettings}>Cookie settings</Button>
+              <ButtonLink to="/legal#your-data" size="sm" variant="line">See or erase your data</ButtonLink>
+            </div>
+          </Block>
+
+          <Block n={10} id="faq" title="Questions readers ask">
             <Faq items={FAQ} />
           </Block>
 
-          <Block n={10} id="status" title="Status and contact" lede="This is a preview edition. These parts are not connected yet, and each one says so on screen where it appears.">
+          <Block n={11} id="status" title="Status and contact" lede="This is a preview edition. These parts are not connected yet, and each one says so on screen where it appears.">
             <dl className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3">
               {NOT_CONNECTED.map(([t, d]) => (
                 <div key={t} className="border-t border-rule py-3">
@@ -471,7 +499,7 @@ const Label = ({ children }: { children: React.ReactNode }) => <span className="
 function Stat({ value, label }: { value: React.ReactNode; label: string }) {
   return (
     <div>
-      <dd className="text-[34px] font-extrabold leading-none tracking-[-0.04em] tabular-nums">{value}</dd>
+      <dd className="text-[34px] font-extrabold leading-none tracking-[-0.04em] tabular-nums">{typeof value === 'number' || typeof value === 'string' ? <CountUp value={value} /> : value}</dd>
       <dt className="mt-1.5 text-[13.5px] text-muted">{label}</dt>
     </div>
   )

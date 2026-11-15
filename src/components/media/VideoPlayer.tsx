@@ -5,7 +5,7 @@ import { twMerge } from 'tailwind-merge'
 import { AdTag } from '@/components/ads/AdSlot'
 import type { Video } from '@/data/media'
 import { IMA_AD_TAG, playPreroll, preloadIma } from '@/lib/google'
-import { useStoredValue } from '@/lib/store'
+import { useConsent } from '@/lib/consent'
 
 type Phase = 'poster' | 'ad-loading' | 'ad' | 'content'
 
@@ -13,7 +13,7 @@ type Phase = 'poster' | 'ad-loading' | 'ad' | 'content'
  * Video player with an optional Google pre-roll advert.
  *
  * It shows the poster and a play button. On play, if a Google ad tag is configured and the
- * reader has made a cookie choice, one advert runs first, clearly labelled, and the video
+ * reader allowed advertising by Google, one advert runs first, clearly labelled, and the video
  * follows. With no tag, a blocked SDK or any advert error, the video simply plays.
  *
  * `autoStart` plays as soon as the player mounts (used when a reader picks from a playlist,
@@ -33,12 +33,13 @@ export function VideoPlayer({
   className?: string
 }) {
   const [phase, setPhase] = useState<Phase>('poster')
-  const [consent] = useStoredValue('ma-consent', '')
+  const { allows } = useConsent()
   const videoRef = useRef<HTMLVideoElement>(null)
   const adRef = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const cancelAd = useRef<() => void>(() => {})
-  const withAd = preroll && !!IMA_AD_TAG && !!consent
+  // Google's advert runs only for readers who allowed advertising by Google.
+  const withAd = preroll && !!IMA_AD_TAG && allows('ads')
 
   // Fetch Google's SDK when the player comes near the screen, so the advert can start on the tap.
   useEffect(() => {
@@ -74,7 +75,7 @@ export function VideoPlayer({
     cancelAd.current = playPreroll({
       video: v,
       adContainer: adRef.current,
-      personalised: consent === 'all',
+      personalised: true,
       onAdStart: () => setPhase('ad'),
       onDone: playContent,
     })

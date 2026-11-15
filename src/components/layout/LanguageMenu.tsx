@@ -5,6 +5,7 @@ import { twMerge } from 'tailwind-merge'
 
 import { useToast } from '@/components/overlays/Toast'
 import { useSiteActions } from '@/lib/actions'
+import { useConsent } from '@/lib/consent'
 import { useEdition } from '@/lib/edition'
 import { LANGUAGES, Language, currentLanguage, setLanguage } from '@/lib/translate'
 
@@ -21,6 +22,7 @@ export function LanguageMenu({ className }: { className?: string }) {
   const [country] = useEdition()
   const { openEdition } = useSiteActions()
   const toast = useToast()
+  const { grant } = useConsent()
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -42,7 +44,11 @@ export function LanguageMenu({ className }: { className?: string }) {
   const choose = (l: Language) => {
     setLang(l.code)
     setOpen(false)
-    if (l.code !== 'en') toast(`Translating into ${l.name}`)
+    if (l.code !== 'en') {
+      // Choosing a language is the reader asking for translation.
+      grant('translation')
+      toast(`Opening the ${l.name} edition`)
+    }
     setLanguage(l.code)
   }
 
@@ -56,6 +62,7 @@ export function LanguageMenu({ className }: { className?: string }) {
         className="flex w-full items-center gap-3 px-4 py-2 text-left text-[14.5px] text-ink transition-colors duration-100 hover:bg-paper aria-checked:font-semibold"
       >
         <span className="min-w-0 flex-1 truncate">
+          <span className="mr-2.5 inline-block w-[38px] font-mono text-[11px] uppercase text-muted">/{l.code.split('-')[0]}</span>
           {l.native}
           {l.native !== l.name && <span className="ml-2 text-[13px] font-normal text-muted">{l.name}</span>}
         </span>
