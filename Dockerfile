@@ -1,31 +1,26 @@
-# MirrorActu: build with Node, serve with nginx. One file builds two separate websites:
+# MirrorActu: ONE image for all three services. What a container does is chosen when it
+# starts, by the APP_TARGET variable:
 #
-#   docker build -t mirroractu .                                  the public site (no dashboard in it)
-#   docker build -t mirroractu-admin --build-arg APP_TARGET=admin .   the staff dashboard
+#   APP_TARGET=site    the public website           (default)   nginx, port $PORT or 8080
+#   APP_TARGET=admin   the staff dashboard                        nginx, port $PORT or 8080
+#   APP_TARGET=api     the API                                    node,  port $PORT or 4000
 #
-#   docker run -p 8080:8080 mirroractu      → http://localhost:8080
+# Every service on Railway (or anywhere else) is built from this same file and differs only
+# in that one variable, so there is nothing to get wrong in build settings.
 #
-# The VITE_* values are read while the site is built, not when the container starts,
-# so pass them as build arguments (docker-compose.yml does this from a .env file).
+#   docker build -t mirroractu .
+#   docker run -p 8080:8080 mirroractu                          the public site
+#   docker run -p 8081:8080 -e APP_TARGET=admin mirroractu      the dashboard
+#   docker run -p 4000:4000 -e APP_TARGET=api -e DATABASE_URL=… mirroractu
 
-# ---------- 1. Build ----------
-FROM node:22-alpine AS build
+# ---------- 1. Build the two websites ----------
+FROM node:22-alpine AS web-build
 WORKDIR /app
-
-# Dependencies first, so this layer is reused until package files change.
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
-
 COPY . .
 
-# Which website to build: "site" (public) or "admin" (staff dashboard).
-ARG APP_TARGET=site
-# The public site's address, used by the dashboard for its "View the site" links.
-ARG VITE_SITE_URL=""
-ENV VITE_APP_TARGET=$APP_TARGET \
-    VITE_SITE_URL=$VITE_SITE_URL
-
-# Google advertising and geo lookup. All optional: leave empty for house adverts only.
+# Optional build-time settings. Leave empty for house adverts only.
 ARG VITE_ADSENSE_CLIENT=""
 ARG VITE_ADSENSE_SLOT_LEADERBOARD=""
 ARG VITE_ADSENSE_SLOT_MPU=""
@@ -33,33 +28,62 @@ ARG VITE_ADSENSE_SLOT_HALFPAGE=""
 ARG VITE_ADSENSE_SLOT_INFEED=""
 ARG VITE_IMA_AD_TAG=""
 ARG VITE_GEO_ENDPOINT=""
+# The public site's address, used by the dashboard for its "View the site" links.
+ARG VITE_SITE_URL=""
 ENV VITE_ADSENSE_CLIENT=$VITE_ADSENSE_CLIENT \
     VITE_ADSENSE_SLOT_LEADERBOARD=$VITE_ADSENSE_SLOT_LEADERBOARD \
     VITE_ADSENSE_SLOT_MPU=$VITE_ADSENSE_SLOT_MPU \
     VITE_ADSENSE_SLOT_HALFPAGE=$VITE_ADSENSE_SLOT_HALFPAGE \
     VITE_ADSENSE_SLOT_INFEED=$VITE_ADSENSE_SLOT_INFEED \
     VITE_IMA_AD_TAG=$VITE_IMA_AD_TAG \
-    VITE_GEO_ENDPOINT=$VITE_GEO_ENDPOINT
+    VITE_GEO_ENDPOINT=$VITE_GEO_ENDPOINT \
+    VITE_SITE_URL=$VITE_SITE_URL
 
-RUN npm run typecheck && npm run build
+# Two separate builds from the same code: the public site contains no dashboard, and the
+# dashboard contains no public pages (see src/lib/target.ts).
+RUN npm run typecheck \
+ && VITE_APP_TARGET=site  npx vite build --outDir dist-site \
+ && VITE_APP_TARGET=admin npx vite build --outDir dist-admin
 
-# ---------- 2. Serve ----------
-# The unprivileged image runs nginx as a normal user on port 8080, not as root.
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS serve
-ARG APP_TARGET=site
+# ---------- 2. Build the API ----------
+FROM node:22-alpine AS api-build
+WORKDIR /app/server
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY server/ ./
+# The snapshot the API loads into an empty database on first start.
+COPY src/data /app/src/data
+RUN npm run typecheck && npm run build && npm prune --omit=dev
 
-# The port to listen on. Railway and similar hosts set PORT themselves; otherwise 8080.
-# API_UPSTREAM is where /api/ requests are sent: the API service's private address.
-ENV PORT=8080 \
+# ---------- 3. The image that runs ----------
+# nginx as a normal (non-root) user, plus Node for the API role.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+USER root
+RUN apk add --no-cache nodejs \
+ && mkdir -p /etc/nginx/templates /opt/mirroractu/api \
+ && chown -R 101:101 /etc/nginx/templates
+
+COPY --from=web-build /app/dist-site  /usr/share/nginx/site
+COPY --from=web-build /app/dist-admin /usr/share/nginx/admin
+COPY deploy/nginx.site.conf.template deploy/nginx.admin.conf.template /opt/mirroractu/
+COPY --from=api-build /app/server/dist         /opt/mirroractu/api/dist
+COPY --from=api-build /app/server/node_modules /opt/mirroractu/api/node_modules
+COPY server/package.json                       /opt/mirroractu/api/package.json
+COPY server/migrations                         /opt/mirroractu/api/migrations
+COPY deploy/start.sh /start.sh
+RUN chmod +x /start.sh
+USER 101
+
+# APP_TARGET picks the role. API_UPSTREAM is where the two websites send /api/ requests.
+ENV APP_TARGET=site \
+    NODE_ENV=production \
     API_UPSTREAM=http://api:4000 \
-    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     ADMIN_GATEWAY_KEY="" \
-    NGINX_ENVSUBST_FILTER="^(PORT|API_UPSTREAM|ADMIN_GATEWAY_KEY|NGINX_LOCAL_RESOLVERS)$"
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    NGINX_ENVSUBST_FILTER="^(PORT|API_UPSTREAM|ADMIN_GATEWAY_KEY|WEB_ROOT|NGINX_LOCAL_RESOLVERS)$"
 
-# Turned into /etc/nginx/conf.d/default.conf at start-up, with ${PORT} filled in.
-COPY deploy/nginx.${APP_TARGET}.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=build /app/dist /usr/share/nginx/html
-
-EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:${PORT}/healthz || exit 1
+EXPOSE 8080 4000
+# /healthz answers in every role.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD sh -c 'case "$APP_TARGET" in api) p=${PORT:-4000};; *) p=${PORT:-8080};; esac; wget -q -O /dev/null http://127.0.0.1:$p/healthz' || exit 1
+ENTRYPOINT ["/start.sh"]

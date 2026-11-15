@@ -43,6 +43,9 @@ app.setErrorHandler((err: any, req, reply) => {
   return reply.code(500).send({ error: 'Something went wrong on our side.' })
 })
 
+// The same health path as the two websites, so one health check setting fits every service.
+app.get('/healthz', async () => 'ok\n')
+
 await app.register(async (api) => {
   await api.register(publicRoutes)
   await api.register(adminRoutes)

@@ -83,7 +83,7 @@ export const config = {
   rateLimitPerMinute: int('RATE_LIMIT_PER_MINUTE', 300, 10),
   eventsRetentionDays: int('EVENTS_RETENTION_DAYS', 90),
   seedContent: flag('SEED_CONTENT', true),
-  logLevel: env.LOG_LEVEL ?? (production ? 'info' : 'warn'),
+  logLevel: env.LOG_LEVEL || (production ? 'info' : 'warn'),
 }
 
 export function checkConfig() {

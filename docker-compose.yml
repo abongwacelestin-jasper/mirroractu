@@ -8,7 +8,36 @@
 #   docker compose down               stop it (data is kept)
 #   docker compose down -v            stop it and delete the database
 #
-# Settings come from a file named .env beside this one (copy deploy/env.example to .env).
+# The site, the dashboard and the API all run the SAME image. APP_TARGET says which one a
+# container is. Settings come from a file named .env beside this one (copy deploy/env.example).
+
+x-app: &app
+  image: mirroractu:latest
+  build:
+    context: .
+    args:
+      VITE_SITE_URL: ${SITE_URL:-http://localhost:8080}
+      VITE_ADSENSE_CLIENT: ${VITE_ADSENSE_CLIENT:-}
+      VITE_ADSENSE_SLOT_LEADERBOARD: ${VITE_ADSENSE_SLOT_LEADERBOARD:-}
+      VITE_ADSENSE_SLOT_MPU: ${VITE_ADSENSE_SLOT_MPU:-}
+      VITE_ADSENSE_SLOT_HALFPAGE: ${VITE_ADSENSE_SLOT_HALFPAGE:-}
+      VITE_ADSENSE_SLOT_INFEED: ${VITE_ADSENSE_SLOT_INFEED:-}
+      VITE_IMA_AD_TAG: ${VITE_IMA_AD_TAG:-}
+      VITE_GEO_ENDPOINT: ${VITE_GEO_ENDPOINT:-}
+  restart: unless-stopped
+  # No container needs write access or extra privileges.
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+# The two websites write their nginx config at start-up; these folders must be writable by
+# the nginx user (id 101), who is not root.
+x-web-tmpfs: &web-tmpfs
+  - /tmp
+  - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+  - /etc/nginx/templates:uid=101,gid=101,mode=0755
 
 services:
   # ---------- Database ----------
@@ -31,25 +60,24 @@ services:
 
   # ---------- API ----------
   api:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: mirroractu-api:latest
+    <<: *app
     container_name: mirroractu-api
     environment:
-      DATABASE_URL: postgres://mirroractu:${POSTGRES_PASSWORD:-mirroractu-dev-only}@db:5432/mirroractu
+      APP_TARGET: api
       PORT: "4000"
+      DATABASE_URL: postgres://mirroractu:${POSTGRES_PASSWORD:-mirroractu-dev-only}@db:5432/mirroractu
       NODE_ENV: ${NODE_ENV:-development}
       SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:8080,http://localhost:5173}
       # The dashboard's address, and the key only its web server knows. See server/.env.example.
       ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:8081,http://localhost:5173}
       ADMIN_GATEWAY_KEY: ${ADMIN_GATEWAY_KEY:-}
-      # Staff accounts, created automatically on every start. See server/.env.example.
+      # Staff accounts, created automatically on every start.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       EDITOR_EMAILS: ${EDITOR_EMAILS:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_FORCE_RESET: ${ADMIN_FORCE_RESET:-}
+      ANALYTICS_SALT: ${ANALYTICS_SALT:-dev-only-salt-change-me}
       SESSION_DAYS: ${SESSION_DAYS:-7}
       LOGIN_MAX_FAILS: ${LOGIN_MAX_FAILS:-5}
       LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
@@ -57,82 +85,42 @@ services:
       EVENTS_RETENTION_DAYS: ${EVENTS_RETENTION_DAYS:-90}
       SEED_CONTENT: ${SEED_CONTENT:-true}
       LOG_LEVEL: ${LOG_LEVEL:-}
-      ANALYTICS_SALT: ${ANALYTICS_SALT:-dev-only-salt-change-me}
     depends_on:
       db:
         condition: service_healthy
     ports:
-      # For local development only (vite proxies /api here). Remove on a server: nginx reaches the API privately.
+      # For local development only (vite proxies /api here). Remove on a server.
       - "127.0.0.1:${API_PORT:-4000}:4000"
-    restart: unless-stopped
-    read_only: true
     tmpfs:
       - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
 
   # ---------- Public website ----------
   web:
-    build:
-      context: .
-      args:
-        APP_TARGET: site
-        VITE_ADSENSE_CLIENT: ${VITE_ADSENSE_CLIENT:-}
-        VITE_ADSENSE_SLOT_LEADERBOARD: ${VITE_ADSENSE_SLOT_LEADERBOARD:-}
-        VITE_ADSENSE_SLOT_MPU: ${VITE_ADSENSE_SLOT_MPU:-}
-        VITE_ADSENSE_SLOT_HALFPAGE: ${VITE_ADSENSE_SLOT_HALFPAGE:-}
-        VITE_ADSENSE_SLOT_INFEED: ${VITE_ADSENSE_SLOT_INFEED:-}
-        VITE_IMA_AD_TAG: ${VITE_IMA_AD_TAG:-}
-        VITE_GEO_ENDPOINT: ${VITE_GEO_ENDPOINT:-}
-    image: mirroractu:latest
+    <<: *app
     container_name: mirroractu
     environment:
+      APP_TARGET: site
       API_UPSTREAM: http://api:4000
     depends_on:
       - api
     ports:
       # host:container. Change the left side to serve on another port, e.g. "80:8080".
       - "${PORT:-8080}:8080"
-    restart: unless-stopped
-    # The container needs no write access and no extra privileges.
-    read_only: true
-    tmpfs:
-      - /tmp
-      # nginx writes its config here at start-up (settings are filled in from a template).
-      # It must belong to the nginx user (id 101), who is not root.
-      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    tmpfs: *web-tmpfs
 
   # ---------- Staff dashboard: a separate website on its own port / address ----------
   admin:
-    build:
-      context: .
-      args:
-        APP_TARGET: admin
-        VITE_SITE_URL: ${SITE_URL:-http://localhost:8080}
-    image: mirroractu-admin:latest
+    <<: *app
     container_name: mirroractu-admin
     environment:
+      APP_TARGET: admin
       API_UPSTREAM: http://api:4000
       ADMIN_GATEWAY_KEY: ${ADMIN_GATEWAY_KEY:-}
     depends_on:
       - api
     ports:
       - "${ADMIN_PORT:-8081}:8080"
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    tmpfs: *web-tmpfs
 
 volumes:
   db-data:

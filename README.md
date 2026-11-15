@@ -39,7 +39,7 @@ from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. The dashboard is at **`/admin`**.
 - Existing accounts are never changed by a restart: passwords are left alone and nobody is demoted or removed.
 - **Locked out?** Set `ADMIN_FORCE_RESET=true`, restart, sign in with `ADMIN_PASSWORD`, then remove the variable.
 - **One account by hand**, with a one-time password printed once:
-  `docker compose exec api node dist/create-admin.js ada@example.com "Ada Obi" admin`
+  `docker compose exec api node /opt/mirroractu/api/dist/create-admin.js ada@example.com "Ada Obi" admin`
 - Administrators can also add staff from the dashboard (**Staff**).
 
 Every API setting is listed with its default in `server/.env.example`.
@@ -110,14 +110,13 @@ docker compose logs -f web          # watch it
 docker compose down                 # stop it
 ```
 
-Or without Compose: `docker build -t mirroractu .` then `docker run -d -p 8080:8080 mirroractu`.
+Or without Compose: `docker build -t mirroractu .` then `docker run -d -p 8080:8080 mirroractu` (add `-e APP_TARGET=admin` or `-e APP_TARGET=api` for the other roles).
 
 | File | What it does |
 |---|---|
-| `Dockerfile` | Stage 1 installs, typechecks and builds with Node 22. Stage 2 copies the result into `nginx-unprivileged` |
+| `Dockerfile` | One image for the site, the dashboard and the API. `APP_TARGET` (`site`, `admin` or `api`) chooses the role when a container starts; `deploy/start.sh` does the choosing |
 | `deploy/nginx.site.conf.template`, `deploy/nginx.admin.conf.template` | Sends every page address (including `/fr/…`) to the app, caches hashed assets for a year and media for a week, never caches `index.html`, adds security headers, answers `/healthz` |
 | `docker-compose.yml` | The three services, on read-only file systems with no extra privileges, restarting unless stopped |
-| `server/Dockerfile`, `server/railway.json` | The API container and its Railway settings |
 | `railway.json` | Tells Railway to build from the Dockerfile and check `/healthz` |
 | `deploy/env.example` | The settings, all optional. They are baked in at build time, so rebuild after changing them |
 

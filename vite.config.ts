@@ -1,19 +1,26 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 
 /** Give the service worker a new id on every build, so each deploy refreshes its caches. */
-const stampServiceWorker = () => ({
-  name: 'stamp-service-worker',
-  apply: 'build' as const,
-  closeBundle() {
-    const file = fileURLToPath(new URL('./dist/sw.js', import.meta.url))
-    if (!existsSync(file)) return
-    writeFileSync(file, readFileSync(file, 'utf8').replaceAll('__BUILD_ID__', Date.now().toString(36)))
-  },
-})
+const stampServiceWorker = () => {
+  let outDir = 'dist'
+  return {
+    name: 'stamp-service-worker',
+    apply: 'build' as const,
+    configResolved(config: { build: { outDir: string } }) {
+      outDir = config.build.outDir
+    },
+    closeBundle() {
+      const file = resolve(outDir, 'sw.js')
+      if (!existsSync(file)) return
+      writeFileSync(file, readFileSync(file, 'utf8').replaceAll('__BUILD_ID__', Date.now().toString(36)))
+    },
+  }
+}
 
 // ADMIN_GATEWAY_KEY from the local .env file, if there is one. In development the dev server
 // plays the part of the dashboard's web server and adds the key to the requests it forwards.

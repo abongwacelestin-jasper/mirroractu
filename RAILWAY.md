@@ -34,12 +34,17 @@ Four services in one Railway project. Two are public, two are private.
                              └─────────────────┘
 ```
 
-| Service | What it is | Public address? | Built from |
+| Service | What it is | Public address? | `APP_TARGET` |
 |---|---|---|---|
-| `Postgres` | The database | No | Railway's PostgreSQL |
-| `api` | The API: stories, trends, wire, forms, sign-in, dashboard data | **No** | `server/Dockerfile` |
-| `web` | The public website | Yes | `Dockerfile` (default) |
-| `admin` | The staff dashboard, a separate website | Yes, its own | `Dockerfile` with `APP_TARGET=admin` |
+| `Postgres` | The database | No | (Railway's PostgreSQL) |
+| `api` | The API: stories, trends, wire, forms, sign-in, dashboard data | **No** | `api` |
+| `web` | The public website | Yes | not set (or `site`) |
+| `admin` | The staff dashboard, a separate website | Yes, its own | `admin` |
+
+**All three app services are built from the same repository and the same `Dockerfile`, with no build settings
+to change.** The image contains all three roles, and the `APP_TARGET` variable decides which one a service runs
+when it starts. The first line of every deploy log says which: `MirrorActu starting as: api` (or `site`, `admin`).
+If that line names the wrong role, the variable is wrong on that service.
 
 ### Why the dashboard is a separate service
 
@@ -76,12 +81,14 @@ So the only way in is: the `admin` address → its server → the API. Knowing t
 
 1. **New** → **GitHub Repo** → `kelvintawe13/mirroractu`.
 2. Rename the service to **`api`** (Settings → Service Name).
-3. **Settings → Build → Config file path**: `/server/railway.json`. Leave **Root Directory** empty.
+3. **Settings → Build**: nothing to change. If you set a *Config file path* or a `RAILWAY_DOCKERFILE_PATH`
+   variable earlier, remove them (they are harmless, but no longer needed).
 4. **Settings → Networking**: do **not** generate a domain. It must stay private.
 5. **Variables**:
 
 | Variable | Value | Notes |
 |---|---|---|
+| `APP_TARGET` | `api` | **Makes this service the API.** Without it the service starts as the website and its health check fails |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Connects to the database over the private network |
 | `PORT` | `4000` | Set it so the other services can refer to it |
 | `NODE_ENV` | `production` | Turns on HTTPS-only cookies and the checks below |
@@ -100,30 +107,29 @@ The API refuses to start in production if `SITE_ORIGIN`, `ADMIN_ORIGIN`, `ADMIN_
 
 1. **New** → **GitHub Repo** → the same repository.
 2. Rename the service to **`web`**.
-3. No build settings to change: it uses the root `railway.json` and `Dockerfile`.
+3. No build settings to change.
 4. **Variables**:
 
 | Variable | Value | Notes |
 |---|---|---|
 | `API_UPSTREAM` | `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}` | Where `/api/` requests are sent, privately |
 
-   Do **not** set `PORT` (Railway provides it), `APP_TARGET` or `ADMIN_GATEWAY_KEY` on this service.
+   Do **not** set `PORT` (Railway provides it) or `ADMIN_GATEWAY_KEY` on this service. `APP_TARGET` can be left unset.
 5. **Settings → Networking → Generate Domain**. This is the public address.
 
 ## Step 4: the staff dashboard (`admin`)
 
 1. **New** → **GitHub Repo** → the same repository, a third time.
 2. Rename the service to **`admin`**.
-3. No build settings to change: it uses the same root `railway.json` and `Dockerfile`. The variable
-   `APP_TARGET` below is what makes it build the dashboard instead of the site.
+3. No build settings to change. The variable `APP_TARGET` below is what makes it run the dashboard instead of the site.
 4. **Variables**:
 
 | Variable | Value | Notes |
 |---|---|---|
-| `APP_TARGET` | `admin` | Build the dashboard, with its own locked-down web server |
+| `APP_TARGET` | `admin` | Run the dashboard, with its own locked-down web server |
 | `API_UPSTREAM` | `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}` | Same private address as `web` uses |
 | `ADMIN_GATEWAY_KEY` | `${{api.ADMIN_GATEWAY_KEY}}` | A reference, so the two can never drift apart |
-| `VITE_SITE_URL` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` | For the dashboard's "View the site" links |
+| `VITE_SITE_URL` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` | Optional. For the dashboard's "View the site" links |
 
 5. **Settings → Networking → Generate Domain**. This is the dashboard's address. Do not publish it.
 
@@ -191,6 +197,7 @@ Also open `https://SITE/admin` in a browser: it should be the site's "Not found"
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
+| `APP_TARGET` | Yes | | `api` |
 | `DATABASE_URL` | Yes | | Postgres connection |
 | `NODE_ENV` | Yes | | `production` |
 | `PORT` | Yes on Railway | `4000` | Port to listen on |
@@ -228,18 +235,20 @@ The `VITE_…` values are used while building, so changing one rebuilds the serv
 | `APP_TARGET` | Yes | `admin` |
 | `API_UPSTREAM` | Yes | Private address of `api` |
 | `ADMIN_GATEWAY_KEY` | Yes | `${{api.ADMIN_GATEWAY_KEY}}` |
-| `VITE_SITE_URL` | Recommended | The public site's address |
+| `VITE_SITE_URL` | Optional | The public site's address, for the dashboard's "View the site" links. Used while building |
 
 ## If something does not work
 
 | What you see | Likely cause |
 |---|---|
+| The `api` service's log shows `MirrorActu starting as: site`, `nginx` lines and `api could not be resolved`, and its health check fails | `APP_TARGET=api` is not set on that service, so it started as the website. Add the variable and redeploy. A correct API log starts `MirrorActu starting as: api` and ends `MirrorActu API listening on :4000` |
+| `web` or `admin` log says `api could not be resolved` | `API_UPSTREAM` is not set on that service, so it is using the Docker default `http://api:4000`. Set it to `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}` |
 | `api` crashes on start with "Cannot start: …" | A required variable is missing or too short. The log lists which |
 | Site loads but shows the built-in sample edition and the wire says "Simulated" | `web` cannot reach `api`. Check `API_UPSTREAM` on `web`, and `PORT=4000` on `api` |
 | Dashboard sign-in says "Not found" or nothing happens | `ADMIN_GATEWAY_KEY` on `admin` does not match `api`, or `API_UPSTREAM` is wrong on `admin` |
 | Dashboard sign-in says "Request did not come from the MirrorActu dashboard" | The address in the browser is not in `ADMIN_ORIGIN` on `api` (common after adding a custom domain) |
 | Reader forms say "Request did not come from the MirrorActu site" | The site's address is not in `SITE_ORIGIN` on `api` |
-| The dashboard shows the public site, or the site shows the dashboard | `APP_TARGET` is set on the wrong service. Only `admin` has it |
+| The dashboard shows the public site, or the site shows the dashboard | `APP_TARGET` is wrong on that service: `admin` for the dashboard, unset or `site` for the public site, `api` for the API. The first log line shows what it started as |
 | "Wrong email or password" for a brand-new account | The account already existed, so `ADMIN_PASSWORD` was not applied. Use `ADMIN_FORCE_RESET=true` once |
 | Locked out completely | Set `ADMIN_FORCE_RESET=true` on `api`, redeploy, sign in with `ADMIN_PASSWORD`, then remove the variable |
 

@@ -18,7 +18,8 @@ server {
   listen ${PORT};
   listen [::]:${PORT};
   server_name _;
-  root /usr/share/nginx/html;
+  # /usr/share/nginx/site or /usr/share/nginx/admin, set by deploy/start.sh.
+  root ${WEB_ROOT};
   index index.html;
 
   # Do not advertise the server version.

@@ -1,8 +1,7 @@
 /**
  * Create (or reset) one staff account from the command line and print a one-time password.
  *
- *   docker compose exec api node dist/create-admin.js ada@example.com "Ada Obi" admin
- *   railway run --service api node dist/create-admin.js ada@example.com "Ada Obi" editor
+ *   docker compose exec api node /opt/mirroractu/api/dist/create-admin.js ada@example.com "Ada Obi" admin
  *
  * The password is shown once and never stored in readable form. The person must choose
  * their own at first sign-in.
