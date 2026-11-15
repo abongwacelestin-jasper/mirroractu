@@ -3,62 +3,59 @@
  * tab title, description, and the tags social networks and messaging apps read when a link is
  * shared (Open Graph and Twitter cards).
  *
- * Note: these are set in the browser. Crawlers that do not run JavaScript only see the
- * defaults in index.html; for full previews of every story, render these on the server too.
+ * In production the same details are already in the page when it arrives (the web server asks
+ * the API for them: server/src/seo.ts), so search engines and messaging apps see them without
+ * running any script. This file keeps them right as a reader moves from page to page.
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import { EDITION_DATE, getCategory, resolveStory } from '@/data'
+import { getCategory, resolveStory } from '@/data'
+import { getCountry } from '@/data/geo'
 import { storyMedia } from '@/data/media'
 import { OFFER_CATEGORIES, findOffer } from '@/data/offers'
-import { localePath } from '@/lib/translate'
+import { DEFAULT_DESCRIPTION, DEFAULT_IMAGE, HOME_KEYWORDS, HOME_TITLE, NOT_FOUND, SECTION_SEO, SITE_KEYWORDS, SITE_NAME, STATIC_PAGES, clip, keywordList, withSite } from '@/data/seo'
 
-const SITE = 'MirrorActu'
-const TAGLINE = 'Today, reflected. Tomorrow, remembered.'
-const DEFAULT_DESCRIPTION = 'MirrorActu shows what happened, what is confirmed, what is still open and where it came from.'
-const DEFAULT_IMAGE = '/brand/share.png'
+const SITE = SITE_NAME
 
-export type PageMeta = { title: string; description: string; image: string; type: 'website' | 'article'; heading: string }
+export type PageMeta = { title: string; description: string; image: string; type: 'website' | 'article'; heading: string; keywords: string[]; noindex?: boolean }
 
-const STATIC: Record<string, [string, string]> = {
-  '/trends': ['Today’s trends', 'What MirrorActu is following most closely today, ranked by coverage, wire activity and readership.'],
-  '/brief': ['The Brief', `Eight stories in about two minutes. ${EDITION_DATE}.`],
-  '/coming-up': ['Coming up', 'Dates worth knowing, taken from the stories we are following.'],
-  '/live': ['Live data', 'The wire, scores, markets and climate figures, each with its provider and its age.'],
-  '/saved': ['Saved stories', 'Stories you have saved on this device.'],
-  '/search': ['Search', 'Search MirrorActu stories, videos, photos, topics and dates.'],
-  '/how-we-work': ['How we work', 'How MirrorActu decides what to publish, credits its sources and corrects its mistakes.'],
-  '/legal': ['Legal and contact', 'Privacy, terms, your data and picture credits.'],
-  '/offers': ['Offers', 'Fares, stays, events and services from our advertisers. Advertising, kept apart from the newsroom.'],
-}
-
-/** Work out the title and share details for an address (without its language prefix). */
+/**
+ * Work out the title, description and keywords for an address (without its language prefix).
+ * The wording for fixed pages and sections is in src/data/seo.ts, shared with the API, which
+ * writes the same details into the page before it is sent (server/src/seo.ts).
+ */
 export function metaFor(pathname: string, search = ''): PageMeta {
-  const page = (heading: string, description = DEFAULT_DESCRIPTION, image = DEFAULT_IMAGE, type: PageMeta['type'] = 'website'): PageMeta => ({ title: `${heading} | ${SITE}`, description, image, type, heading })
-  if (pathname === '/') return { title: `${SITE}: ${TAGLINE}`, description: DEFAULT_DESCRIPTION, image: DEFAULT_IMAGE, type: 'website', heading: 'Front page' }
+  const page = (heading: string, description = DEFAULT_DESCRIPTION, image = DEFAULT_IMAGE, type: PageMeta['type'] = 'website', keywords: string[] = [], noindex = false): PageMeta => ({ title: withSite(heading), description, image, type, heading, keywords, noindex })
+  if (pathname === '/') return { title: HOME_TITLE, description: DEFAULT_DESCRIPTION, image: DEFAULT_IMAGE, type: 'website', heading: 'Front page', keywords: HOME_KEYWORDS }
 
   const [, first, second, third] = pathname.split('/')
   if (first === 'story') {
     const { story } = resolveStory(second)
-    return story ? page(story.h, story.st, storyMedia(story.id)?.src ?? DEFAULT_IMAGE, 'article') : page('Story not found')
+    if (!story) return page('Story not found', NOT_FOUND.description, DEFAULT_IMAGE, 'website', [], true)
+    const places = ((story as { countries?: string[] }).countries ?? []).map((c) => getCountry(c).name).filter((n) => n !== 'International')
+    return page(story.h, clip(`${story.st} ${story.what}`), storyMedia(story.id)?.src ?? DEFAULT_IMAGE, 'article', [story.sub, ...(story.tags ?? '').split(/\s+/), ...places, ...story.cats.map((c) => `${c.charAt(0).toUpperCase()}${c.slice(1)} news`)].filter((t) => t && t.length > 1))
   }
   if (first === 'offers' && second) {
     const found = findOffer(second, third)
-    if (found) return page(`${found.offer.title}, from ${found.advertiser.name}`, `Advertiser offer: ${found.offer.detail}`, found.offer.image.src)
+    if (found) return page(`${found.offer.title}, from ${found.advertiser.name}`, clip(`Advertiser offer from ${found.advertiser.name}: ${found.offer.detail} ${found.offer.about}`), found.offer.image.src, 'website', [found.offer.title, found.advertiser.name])
     const cat = OFFER_CATEGORIES.find((c) => c.id === second)
-    if (cat) return page(`${cat.name} offers`, `${cat.blurb} Advertising, kept apart from the newsroom.`)
+    if (cat && !third) return page(`${cat.name} offers from our advertisers`, `${cat.blurb} Advertising, clearly labelled and kept apart from the newsroom.`, DEFAULT_IMAGE, 'website', [`${cat.name.toLowerCase()} offers`, `${cat.name.toLowerCase()} deals`])
+    return page(NOT_FOUND.title, NOT_FOUND.description, DEFAULT_IMAGE, 'website', [], true)
   }
   if (first === 'search') {
     const q = new URLSearchParams(search).get('q')
-    if (q) return page(`“${q}”: search results`, `MirrorActu stories, videos and dates matching “${q}”.`)
+    if (q) return page(`“${q}”: search results`, `MirrorActu stories, videos and dates matching “${q}”.`, DEFAULT_IMAGE, 'website', [], true)
   }
-  if (first === 'newsletter') return page(second === 'unsubscribe' ? 'Unsubscribe from the morning email' : 'Your morning email', 'Confirm or stop the MirrorActu morning email.')
-  const fixed = STATIC[`/${first}`]
-  if (fixed && !second) return page(fixed[0], fixed[1])
+  if (first === 'newsletter') return page(second === 'unsubscribe' ? 'Unsubscribe from the morning email' : 'Your morning email', 'Confirm or stop the MirrorActu morning email.', DEFAULT_IMAGE, 'website', [], true)
+  const fixed = STATIC_PAGES[`/${first}`]
+  if (fixed && !second) return page(fixed.title, fixed.description, DEFAULT_IMAGE, 'website', fixed.keywords, fixed.noindex)
   const section = getCategory(first)
-  if (section && !second) return page(`${section.name} news`, section.blurb)
-  return page('Page not found')
+  if (section && !second) {
+    const seo = SECTION_SEO[section.id]
+    return page(seo?.title ?? `${section.name} news today`, seo?.description ?? section.blurb, DEFAULT_IMAGE, 'website', seo?.keywords ?? [`${section.name} news`])
+  }
+  return page(NOT_FOUND.title, NOT_FOUND.description, DEFAULT_IMAGE, 'website', [], true)
 }
 
 function setTag(selector: string, create: () => HTMLElement, attr: string, value: string) {
@@ -80,20 +77,26 @@ const metaProp = (property: string, content: string) =>
 /** Keep the document head in step with the current route. Call once, in the layout. */
 export function usePageMeta() {
   const { pathname, search } = useLocation()
+  const first = useRef(pathname + search)
   useEffect(() => {
     const m = metaFor(pathname, search)
-    const url = location.origin + localePath(document.documentElement.lang === 'en' ? 'en' : document.documentElement.lang, pathname)
+    // Shared links point at the English address: it is the one every reader and crawler can open as written.
+    const url = location.origin + pathname
     const image = location.origin + m.image
+    // Structured data and article tags written for the page that was first loaded do not describe this one.
+    if (first.current !== pathname + search) document.head.querySelectorAll('script[data-seo], meta[property^="article:"], meta[name="news_keywords"], meta[property="og:image:width"], meta[property="og:image:height"], meta[property="og:image:alt"], meta[name="twitter:image:alt"]').forEach((el) => el.remove())
     document.title = m.title
     metaName('description', m.description)
+    metaName('keywords', keywordList(m.keywords, SITE_KEYWORDS))
+    metaName('robots', m.noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1')
     metaProp('og:site_name', SITE)
     metaProp('og:type', m.type)
-    metaProp('og:title', m.title)
+    metaProp('og:title', m.heading === 'Front page' ? m.title : m.heading)
     metaProp('og:description', m.description)
     metaProp('og:url', url)
     metaProp('og:image', image)
     metaName('twitter:card', 'summary_large_image')
-    metaName('twitter:title', m.title)
+    metaName('twitter:title', m.heading === 'Front page' ? m.title : m.heading)
     metaName('twitter:description', m.description)
     metaName('twitter:image', image)
   }, [pathname, search])

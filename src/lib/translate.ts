@@ -84,7 +84,7 @@ export function setLanguage(code: string) {
   location.assign(localePath(code) + location.search + location.hash)
 }
 
-/** <link rel="alternate" hreflang> for every language, plus the canonical address, for search engines. */
+/** The canonical address of the current page, for search engines. */
 export function alternateLinks() {
   const { rest, lang } = localeFromPath()
   document.head.querySelectorAll('link[data-locale]').forEach((l) => l.remove())
@@ -96,9 +96,11 @@ export function alternateLinks() {
     link.dataset.locale = ''
     document.head.appendChild(link)
   }
-  for (const l of LANGUAGES) add('alternate', localePath(l.code, rest), l.code)
-  add('alternate', localePath('en', rest), 'x-default')
-  add('canonical', localePath(lang, rest))
+  // One canonical address per page: the English one. A translated address (/fr/…) carries the
+  // same English text until the reader's browser translates it, so offering it to search
+  // engines as a French page would be untrue and would compete with the original.
+  void lang
+  if (!document.head.querySelector('meta[name="robots"][content^="noindex"]')) add('canonical', rest === '/' ? '/' : rest.replace(/\/+$/, ''))
 }
 
 /* ---------- Machine translation ---------- */

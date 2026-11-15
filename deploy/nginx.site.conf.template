@@ -42,7 +42,7 @@ server {
   gzip_comp_level 6;
   gzip_min_length 1024;
   gzip_vary on;
-  gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+  gzip_types text/plain text/css application/javascript application/json application/xml application/rss+xml image/svg+xml;
 
   # ---------- Security headers ----------
   # (No Content-Security-Policy here: the site may load Google Translate, Google adverts and
@@ -140,7 +140,51 @@ server {
     try_files $uri /index.html;
   }
 
+  # ---------- Search engines and link previews ----------
+  # robots.txt, the sitemaps and the RSS feed are written by the API from what is published.
+  location ~ ^/(robots\.txt|sitemap\.xml|news-sitemap\.xml|feed\.xml)$ {
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+    set $api_upstream ${API_UPSTREAM};
+    rewrite ^/(.*)$ /api/v1/seo/$1 break;
+    proxy_pass $api_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_set_header X-Admin-Gateway-Key "";
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 10s;
+  }
+
+  # The page asks for its own title, description, share tags and structured data here, and
+  # for a plain-HTML copy of its content (see the two "include" lines in index.html). Only
+  # nginx itself can use this address. If the API is slow or down, the page is sent with its
+  # built-in defaults instead: a page view never waits on this for more than two seconds.
+  location /__seo/ {
+    internal;
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+    set $api_upstream ${API_UPSTREAM};
+    rewrite ^/__seo/(.*)$ /api/v1/seo/$1 break;
+    proxy_pass $api_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_set_header Accept-Encoding "";
+    proxy_set_header X-Admin-Gateway-Key "";
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 2s;
+    proxy_intercept_errors on;
+    error_page 400 404 429 500 502 503 504 = @seo_none;
+  }
+  location @seo_none {
+    internal;
+    return 204;
+  }
+
   location = /index.html {
+    # Lets the page pull in the fragments from /__seo/ above.
+    ssi on;
+    ssi_silent_errors on;
     add_header Cache-Control "no-store" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;

@@ -212,6 +212,16 @@ What is sent, and when:
 | Account created | New member of staff | An administrator adds them. The first password is never emailed |
 | Password changed | Member of staff | Every time their password changes |
 
+## Search engines (SEO)
+
+Nothing to set: `web` asks `api` for each page's title, description, keywords and structured data, and serves
+`/robots.txt`, `/sitemap.xml`, `/news-sitemap.xml` and `/feed.xml` from it. Two things to do once you are live:
+
+1. Put your real domain **first** in `SITE_ORIGIN` on `api`. Canonical addresses, the sitemap and share links
+   are all built from it. While it is the `…up.railway.app` address, that is what search engines will index.
+2. Add the site in **Google Search Console** and **Bing Webmaster Tools**, verify it, and submit
+   `https://YOUR-DOMAIN/sitemap.xml` and `https://YOUR-DOMAIN/news-sitemap.xml`.
+
 ## Prices in the reader's currency
 
 Advertiser prices are in US dollars and are shown in the currency of the reader's country, marked as approximate,

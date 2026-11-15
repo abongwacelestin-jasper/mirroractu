@@ -43,6 +43,12 @@ server {
   add_header Permissions-Policy "camera=(), geolocation=(), payment=(), microphone=(self)" always;
 
   # ---------- Health check ----------
+  # The dashboard is not for search engines.
+  location = /robots.txt {
+    default_type text/plain;
+    return 200 "User-agent: *\nDisallow: /\n";
+  }
+
   location = /healthz {
     access_log off;
     default_type text/plain;

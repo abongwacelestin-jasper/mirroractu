@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>MirrorActu: Today, reflected. Tomorrow, remembered.</title>
-    <meta name="description" content="MirrorActu shows what happened, what is confirmed, what is still open and where it came from." />
+    <!--
+      Search engines and link previews. In production the web server replaces the block below
+      with details for the exact page being asked for (title, description, keywords, canonical
+      address, share tags, structured data), written by the API: see server/src/seo.ts. The
+      block itself is the fallback, used in development and if the API cannot be reached.
+    -->
+    <!--# block name="seo_head" -->
+    <title>MirrorActu: Africa and world news, verified and live</title>
+    <meta name="description" content="News from Africa and the world that shows its work: what happened, what is confirmed, what is still unknown and where it came from. Live updates, daily trends and a two-minute brief." />
+    <meta name="keywords" content="Africa news today, world news today, latest news, breaking news Africa, East Africa news, Rwanda news, Kenya news, Nigeria news, South Africa news, news with sources, trusted news, today’s trends, live news, daily news brief, MirrorActu" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta property="og:site_name" content="MirrorActu" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MirrorActu: Africa and world news, verified and live" />
+    <meta property="og:description" content="News from Africa and the world that shows its work: what happened, what is confirmed, what is still unknown and where it came from." />
+    <meta property="og:image" content="/brand/share.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!--# endblock -->
+    <!--# include virtual="/__seo/head$request_uri" stub="seo_head" -->
     <meta name="theme-color" content="#0e1424" />
     <meta name="color-scheme" content="light" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -18,13 +35,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
-    <!-- Defaults for link previews. src/lib/meta.ts replaces these for each page. -->
-    <meta property="og:site_name" content="MirrorActu" />
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="MirrorActu: Today, reflected. Tomorrow, remembered." />
-    <meta property="og:description" content="MirrorActu shows what happened, what is confirmed, what is still open and where it came from." />
-    <meta property="og:image" content="/brand/share.png" />
-    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -98,7 +108,9 @@
       <div class="bar" aria-hidden="true"><i></i></div>
     </div>
     <div id="root"></div>
-    <noscript>MirrorActu needs JavaScript to load stories.</noscript>
+    <!-- The page's content as plain HTML, for anything that does not run scripts. -->
+    <!--# block name="seo_body" --><noscript>MirrorActu needs JavaScript to load stories.</noscript><!--# endblock -->
+    <!--# include virtual="/__seo/body$request_uri" stub="seo_body" -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -14,6 +14,7 @@ import { newsroomAddresses, sendLater, siteUrl, deskUrl } from '../mail/send'
 import { confirmSubscription, offerFacts, ref, requestSubscription, subscriptionStatus, unsubscribe } from '../mail/service'
 import * as T from '../mail/templates'
 import { rates } from '../rates'
+import { bodyHtml, feed, headHtml, newsSitemap, robotsTxt, sitemap } from '../seo'
 import { resendWebhook } from '../mail/webhook'
 
 const email = z.string().trim().toLowerCase().email().max(254)
@@ -92,6 +93,17 @@ export async function publicRoutes(app: FastifyInstance) {
       off()
     })
   })
+
+  /* ---------- Search engines and link previews (see ../seo.ts) ---------- */
+  // The web server calls these for every page it serves, so they are not rate limited.
+  const open = { config: { rateLimit: false as const } }
+  const pathOf = (req: { params: unknown; url: string }) => `/${String((req.params as any)['*'] ?? '')}${req.url.includes('?') ? '?' : ''}`
+  app.get('/seo/head/*', open, async (req, reply) => reply.type('text/html; charset=utf-8').send(await headHtml(pathOf(req))))
+  app.get('/seo/body/*', open, async (req, reply) => reply.type('text/html; charset=utf-8').send(await bodyHtml(pathOf(req))))
+  app.get('/seo/robots.txt', open, async (_req, reply) => reply.type('text/plain; charset=utf-8').header('Cache-Control', 'public, max-age=3600').send(robotsTxt()))
+  app.get('/seo/sitemap.xml', open, async (_req, reply) => reply.type('application/xml; charset=utf-8').header('Cache-Control', 'public, max-age=600').send(await sitemap()))
+  app.get('/seo/news-sitemap.xml', open, async (_req, reply) => reply.type('application/xml; charset=utf-8').header('Cache-Control', 'public, max-age=600').send(await newsSitemap()))
+  app.get('/seo/feed.xml', open, async (_req, reply) => reply.type('application/rss+xml; charset=utf-8').header('Cache-Control', 'public, max-age=600').send(await feed()))
 
   /* ---------- Forms ---------- */
 

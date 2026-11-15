@@ -330,6 +330,32 @@ photo, section name, search term and so on). The masthead's top links underline 
   (`ma-lang-pref`) is honoured on later visits only while translation consent stands.
   `src/lib/translate.ts` never loads Google's translator before that consent.
 
+## Search engines and link previews (SEO)
+
+The site is drawn in the browser, so crawlers would otherwise see one generic page. Instead the web
+server asks the API for each page's details and stitches them in before sending it
+(`server/src/seo.ts`, the two `include` lines in `index.html`, `/__seo/` in
+`deploy/nginx.site.conf.template`). No script has to run for a crawler or a chat app to see them.
+
+- **Per page:** title, description, keywords, canonical address, robots rule, Open Graph and
+  Twitter tags (with the story's own picture), and for stories the publish date, section and tags.
+- **Structured data:** `NewsArticle` + breadcrumbs on stories; `NewsMediaOrganization`, `WebSite`
+  (with site search) and the latest stories on the front page; `CollectionPage` on sections.
+- **Readable without scripts:** each page's headline, summary, facts, sources and links are in a
+  `<noscript>` block.
+- **`/robots.txt`, `/sitemap.xml`** (every page and story, with pictures), **`/news-sitemap.xml`**
+  (last two days, for Google News) and **`/feed.xml`** (RSS) are generated from what is published.
+- **One address per page.** `/fr/…`, `/en/…` and id-style story links all name the plain English
+  address as canonical. Saved stories, search results, the email pages and unknown addresses are
+  marked `noindex`. The dashboard refuses all crawlers.
+- **Wording** for the front page, fixed pages and sections is in `src/data/seo.ts`. Story keywords
+  come from the story's own subject, tags, countries and sections.
+- If the API is down the page still loads at once, with the front page's details.
+
+Links are built from the **first** address in `SITE_ORIGIN`, so put the real domain first. After
+going live, add the site in Google Search Console and Bing Webmaster Tools and submit
+`/sitemap.xml` and `/news-sitemap.xml`.
+
 ## Email (Resend)
 
 `server/src/mail/`: `send.ts` talks to Resend's HTTP API and logs every attempt (never the body),
