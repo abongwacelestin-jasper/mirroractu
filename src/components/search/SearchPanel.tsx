@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useMoney } from '@/lib/money'
+import { useSearchTracking } from '@/lib/track'
 import { CalendarDays, Clock, Image as ImageIcon, Mic, Play, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
@@ -58,6 +59,7 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
 
   const terms = useMemo(() => termsOf(query), [query])
   const results = useMemo(() => runSearch(query, filters), [query, filters])
+  useSearchTracking(query, results.counts.all)
   const set = (patch: Partial<SearchFilters>) => onFilters({ ...filters, ...patch })
   const filtersOn = filters.desk !== 'all' || !!filters.from || !!filters.to || filters.sort !== 'relevance' || filters.openOnly
 

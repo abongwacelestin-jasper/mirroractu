@@ -12,6 +12,9 @@ import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/feed'
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
 import { Email } from './email'
+
+// The Engagement page carries the map outlines, so it is loaded only when opened.
+const Engagement = React.lazy(() => import('./engagement').then((m) => ({ default: m.Engagement })))
 import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire } from './views'
 
 /**
@@ -41,16 +44,17 @@ type Ctx = { user: User; overview: OverviewData | null; corrections: Correction[
 const AdminContext = createContext<Ctx>(null as unknown as Ctx)
 export const useAdmin = () => useContext(AdminContext)
 
-type TabId = 'overview' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'email' | 'staff' | 'audit' | 'account'
+type TabId = 'overview' | 'engagement' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'email' | 'staff' | 'audit' | 'account'
 type NavItem = { id: TabId; label: string; Icon: typeof BarChart3 }
 const NAV: { group: string; admin?: boolean; items: NavItem[] }[] = [
-  { group: 'Newsroom', items: [{ id: 'overview', label: 'Overview', Icon: BarChart3 }, { id: 'stories', label: 'Stories', Icon: FileText }, { id: 'wire', label: 'Live wire', Icon: Radio }] },
+  { group: 'Newsroom', items: [{ id: 'overview', label: 'Overview', Icon: BarChart3 }, { id: 'engagement', label: 'Engagement', Icon: Activity }, { id: 'stories', label: 'Stories', Icon: FileText }, { id: 'wire', label: 'Live wire', Icon: Radio }] },
   { group: 'Readers', items: [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'subscribers', label: 'Subscribers', Icon: Mail }, { id: 'email', label: 'Email', Icon: Send }] },
   { group: 'Administration', admin: true, items: [{ id: 'staff', label: 'Staff', Icon: Users }, { id: 'audit', label: 'Audit log', Icon: ScrollText }] },
   { group: 'You', items: [{ id: 'account', label: 'Your account', Icon: KeyRound }] },
 ]
 const TITLES: Record<TabId, [string, string]> = {
   overview: ['Overview', 'How the edition is doing today'],
+  engagement: ['Engagement', 'Pages, clicks, searches and where readers are'],
   stories: ['Stories', 'Write, edit and publish'],
   wire: ['Live wire', 'File updates to every open page'],
   inbox: ['Inbox', 'Corrections and enquiries from readers'],
@@ -219,6 +223,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
           <div className="lg:min-h-0 lg:flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]">
             <main ref={mainRef} className="min-w-0 px-4 pb-28 pt-5 sm:px-6 lg:h-full lg:overflow-y-auto lg:overscroll-contain lg:px-8 lg:pb-12 lg:pt-7">
               {current.id === 'overview' && <Overview />}
+              {current.id === 'engagement' && <React.Suspense fallback={<div className="shimmer h-[420px] bg-paper-2" />}><Engagement /></React.Suspense>}
               {current.id === 'stories' && <Stories />}
               {current.id === 'wire' && <Wire />}
               {current.id === 'inbox' && <InboxView />}

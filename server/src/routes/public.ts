@@ -195,14 +195,29 @@ export async function publicRoutes(app: FastifyInstance) {
    * Readership. The site only calls this for readers who allowed measurement. It records the
    * page and story, never the IP address: the visitor id is a daily hash that cannot be reversed.
    */
-  app.post('/events', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/events', { config: { rateLimit: { max: 180, timeWindow: '1 minute' } } }, async (req, reply) => {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
     // Respect "do not track" style signals even if the page called us.
     if (req.headers['sec-gpc'] === '1') return reply.code(204).send()
-    const body = z.object({ type: z.enum(['view']), storyId: z.string().max(80).optional(), path: z.string().max(300), country: z.string().max(3).optional(), lang: z.string().max(8).optional() }).safeParse(req.body)
+    const body = z
+      .object({
+        type: z.enum(['view', 'page', 'click', 'search']),
+        storyId: z.string().max(80).optional(),
+        path: z.string().max(300),
+        country: z.string().max(3).optional(),
+        lang: z.string().max(8).optional(),
+        /** What was clicked, or the words searched for */
+        label: z.string().trim().max(80).optional(),
+        /** The site the reader came from: a host name only, never a full address */
+        ref: z.string().trim().toLowerCase().regex(/^[a-z0-9.-]{1,80}$/).optional(),
+        value: z.number().int().min(0).max(100000).optional(),
+      })
+      .safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Bad event.' })
     const b = body.data
-    await q('INSERT INTO events (type, story_id, path, country, lang, visitor) VALUES ($1, $2, $3, $4, $5, $6)', [b.type, b.storyId ?? null, b.path, countryFromHeaders(req.headers) ?? (b.country && b.country !== 'INT' ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req)])
+    // Only the page's path is kept: anything after "?" could carry something personal.
+    const path = b.path.split(/[?#]/)[0]
+    await q('INSERT INTO events (type, story_id, path, country, lang, visitor, label, ref, value) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.type, b.storyId ?? null, path, countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req), b.label || null, b.ref || null, b.value ?? null])
     return reply.code(204).send()
   })
 }

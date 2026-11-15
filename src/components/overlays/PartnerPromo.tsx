@@ -93,6 +93,7 @@ export function PartnerPromo({ enabled }: { enabled: boolean }) {
                 href={PARTNER.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                data-track="promo:renewberry"
                 onClick={close}
                 className="group inline-flex items-center gap-1.5 rounded-full border border-signal bg-signal px-5 py-2.5 text-[15px] font-semibold text-ink transition-[background-color,translate,box-shadow] duration-150 hover:bg-signal-hover hover:shadow-[0_8px_18px_-8px_rgba(255,90,54,.75)] motion-safe:hover:-translate-y-px"
               >

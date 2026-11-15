@@ -5,6 +5,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { AdInfo, SiteActions, SiteActionsContext } from '@/lib/actions'
 import { dismissBoot, hasBootSplash } from '@/lib/boot'
 import { usePageMeta } from '@/lib/meta'
+import { useEngagement } from '@/lib/track'
 import { startPwa } from '@/lib/pwa'
 import { initReveal } from '@/lib/reveal'
 import { useConsent } from '@/lib/consent'
@@ -92,6 +93,8 @@ export function Layout() {
   // The page follows the language in its address, once the reader has allowed translation.
   useEffect(() => applyLocale(translationAllowed), [translationAllowed])
   useEffect(() => alternateLinks(), [pathname])
+  // Pages and clicks are counted only once the reader has allowed measurement.
+  useEngagement(preview === 'live' && allows('measurement'))
 
   // Each navigation shows the skeleton for the incoming page while it loads.
   useEffect(() => {

@@ -356,6 +356,26 @@ Links are built from the **first** address in `SITE_ORIGIN`, so put the real dom
 going live, add the site in Google Search Console and Bing Webmaster Tools and submit
 `/sitemap.xml` and `/news-sitemap.xml`.
 
+## Engagement and the heat map
+
+The dashboard's **Engagement** page (`src/admin/engagement.tsx`, `GET /admin/engagement`) shows, for
+24 hours, 7 days or 30 days: pages opened, readers, clicks and searches against the period before;
+a heat map of Africa or the world with requests or readers per country; load by hour or day with
+the busiest hour; where readers arrive from; the most opened pages; what gets clicked; and what
+readers search for, with a mark where a search found nothing.
+
+- **What is recorded** (`src/lib/track.ts` → `POST /events`): the page path with nothing after `?`;
+  on the first page of a visit, the *host name* of the site the reader came from (or `utm_source`);
+  a short label for clicks on links leaving the site, offers, promotions and story actions (add
+  `data-track="name"` to any element to count it); and search words, up to 60 characters.
+- **Only with consent.** Nothing is sent unless the reader allowed "Readership measurement", and
+  never when the browser sends Global Privacy Control. No IP address is stored and events are
+  deleted after `EVENTS_RETENTION_DAYS`. Because measurement now covers more than story views,
+  the consent version was raised: every reader is asked again.
+- **Country** comes from the CDN header when there is one (Cloudflare), otherwise from the
+  reader's edition. The map counts measured readers, not all traffic.
+- Map outlines are Natural Earth (public domain), pre-projected in `src/admin/maps.generated.ts`.
+
 ## Email (Resend)
 
 `server/src/mail/`: `send.ts` talks to Resend's HTTP API and logs every attempt (never the body),

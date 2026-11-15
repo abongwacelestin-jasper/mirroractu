@@ -11,7 +11,8 @@
  *  - The choice can be changed at any time (Cookie settings, in the footer).
  *
  * What each purpose gates:
- *   measurement   readership counting: a story view is sent to our own API, with no IP address kept
+ *   measurement   readership counting, sent to our own API with no IP address kept: stories and
+ *                 pages opened, clicks, the site a reader arrived from, and searches (src/lib/track.ts)
  *   ads           Google AdSense and Google video adverts. Denied: house adverts only, no Google.
  *   translation   Google Translate, which receives the page text
  */
@@ -21,12 +22,13 @@ export type Purpose = 'measurement' | 'ads' | 'translation'
 export type Consent = { v: number; at: number } & Record<Purpose, boolean>
 
 /** Raise this when the notice changes in a way readers should see again. */
-export const CONSENT_VERSION = 2
+// 3: measurement now also covers pages opened, clicks, the site a reader arrived from and searches.
+export const CONSENT_VERSION = 3
 const MAX_AGE_MS = 182 * 24 * 60 * 60 * 1000
 const KEY = 'ma-consent'
 
 export const PURPOSES: { id: Purpose; name: string; about: string }[] = [
-  { id: 'measurement', name: 'Readership measurement', about: 'Counts which stories are read so editors know what is useful. No profile of you is built and your IP address is not stored.' },
+  { id: 'measurement', name: 'Readership measurement', about: 'Counts which pages and stories are opened, what is pressed, which site you arrived from and what is searched for, so editors know what is useful. No profile of you is built and your IP address is not stored.' },
   { id: 'ads', name: 'Advertising by Google', about: 'Lets Google choose and measure adverts, including video adverts. If you deny it you still see adverts, but only our own, with no tracking.' },
   { id: 'translation', name: 'Translation by Google', about: 'Needed to read MirrorActu in another language, including the one we offer for your country. The page text is sent to Google Translate.' },
 ]

@@ -93,7 +93,7 @@ export function Masthead({ onSearch, onSubscribe }: { onSearch: () => void; onSu
               <kbd className="ml-auto hidden rounded border border-rule-dark px-1.5 font-mono text-[11px] xl:inline">/</kbd>
             </button>
             <LanguageMenu />
-            <button type="button" onClick={onSubscribe} className={buttonClass({ size: 'sm', className: 'px-3 text-[13px] max-[389px]:hidden sm:px-[15px] sm:text-sm' })}>
+            <button type="button" data-track="subscribe:masthead" onClick={onSubscribe} className={buttonClass({ size: 'sm', className: 'px-3 text-[13px] max-[389px]:hidden sm:px-[15px] sm:text-sm' })}>
               Subscribe
             </button>
           </div>

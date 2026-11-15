@@ -95,6 +95,7 @@ function Action({ label, pressed, tone, children, ...rest }: { label: string; pr
     <button
       type="button"
       aria-pressed={pressed}
+      data-track={`story:${label.toLowerCase()}`}
       className={twMerge(
         'flex min-h-10 items-center gap-1.5 rounded-full px-2.5 text-[13.5px] font-semibold text-muted transition-colors duration-150 hover:bg-paper hover:text-ink sm:px-3',
         pressed && (tone === 'signal' ? 'text-signal hover:text-signal' : 'text-ink')

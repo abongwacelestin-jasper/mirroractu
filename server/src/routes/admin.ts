@@ -113,6 +113,41 @@ export async function adminRoutes(app: FastifyInstance) {
       return { counts: num(counts), days: days.map(num), topStories: top.map(num), countries: (await by('country')).map(num), languages: (await by('lang')).map(num), trends: (await globalTrends()).slice(0, 10), activeCountries: await activeCountries() }
     })
 
+    /**
+     * Engagement over the last 1, 7 or 30 days: pages, clicks, where readers came from, what
+     * they searched for, where they are, and how busy each hour was. Counts cover readers
+     * who allowed measurement only.
+     */
+    admin.get('/engagement', async (req) => {
+      const { days } = z.object({ days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d)).default(7) }).parse(req.query)
+      const num = (r: any) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v]))
+      const since = `at > now() - make_interval(days => $1)`
+      const totals = (from: string, to: string) =>
+        one(
+          `SELECT count(*) FILTER (WHERE type = 'page') AS pages, count(DISTINCT visitor) AS readers, count(*) FILTER (WHERE type = 'click') AS clicks,
+             count(*) FILTER (WHERE type = 'search') AS searches, count(*) FILTER (WHERE type = 'page' AND ref IS NOT NULL) AS referred
+           FROM events WHERE at > now() - make_interval(days => ${from}) AND at <= now() - make_interval(days => ${to})`,
+          [days]
+        )
+      const [now, before, hours, pages, referrers, clicks, searches, countries] = await Promise.all([
+        totals('$1', '0'),
+        totals('$1 * 2', '$1'),
+        // Hour by hour for 1 day, otherwise day by day.
+        days === 1
+          ? q(`SELECT to_char(h, 'YYYY-MM-DD"T"HH24:00') AS t, count(e.id) AS n FROM generate_series(date_trunc('hour', now()) - interval '23 hours', date_trunc('hour', now()), '1 hour') h LEFT JOIN events e ON e.at >= h AND e.at < h + interval '1 hour' GROUP BY h ORDER BY h`)
+          : q(`SELECT to_char(d, 'YYYY-MM-DD') AS t, count(e.id) AS n FROM generate_series(current_date - ($1::int - 1), current_date, '1 day') d LEFT JOIN events e ON e.at >= d AND e.at < d + interval '1 day' GROUP BY d ORDER BY d`, [days]),
+        q(`SELECT path, count(*) AS views, count(DISTINCT visitor) AS readers FROM events WHERE type = 'page' AND ${since} GROUP BY path ORDER BY views DESC LIMIT 12`, [days]),
+        q(`SELECT ref, count(*) AS visits FROM events WHERE type = 'page' AND ref IS NOT NULL AND ${since} GROUP BY ref ORDER BY visits DESC LIMIT 10`, [days]),
+        q(`SELECT label, count(*) AS n FROM events WHERE type = 'click' AND label IS NOT NULL AND ${since} GROUP BY label ORDER BY n DESC LIMIT 12`, [days]),
+        q(`SELECT lower(label) AS q, count(*) AS n, count(*) FILTER (WHERE value = 0) AS empty FROM events WHERE type = 'search' AND label IS NOT NULL AND ${since} GROUP BY 1 ORDER BY n DESC LIMIT 12`, [days]),
+        q(`SELECT country AS code, count(*) AS requests, count(*) FILTER (WHERE type = 'page') AS pages, count(DISTINCT visitor) AS readers FROM events WHERE country IS NOT NULL AND ${since} GROUP BY country ORDER BY requests DESC`, [days]),
+      ])
+      // The hour of the day (UTC) that carries the most, over the whole period: when to expect load.
+      const busiest = await one(`SELECT extract(hour FROM at)::int AS hour, count(*) AS n FROM events WHERE ${since} GROUP BY 1 ORDER BY n DESC LIMIT 1`, [days])
+      const unknown = await one(`SELECT count(*) AS n FROM events WHERE country IS NULL AND ${since}`, [days])
+      return { days, totals: num(now), previous: num(before), series: hours.map(num), pages: pages.map(num), referrers: referrers.map(num), clicks: clicks.map(num), searches: searches.map(num), countries: countries.map(num), busiestHour: busiest ? num(busiest) : null, unknownCountry: Number(unknown?.n ?? 0) }
+    })
+
     /** Trends as readers in one country see them: country, region and global levels. */
     admin.get('/trends', async (req) => {
       const { country } = z.object({ country: z.string().max(3).optional() }).parse(req.query)
