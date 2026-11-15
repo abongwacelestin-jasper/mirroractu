@@ -15,6 +15,7 @@ import { config } from '../config'
 import { deskUrl, mailConfigured, sendLater, sendMail, siteUrl } from '../mail/send'
 import { TEMPLATES, buildEdition, confirmLink, latestStories, ref, sample, sendEdition, unsubscribeLink } from '../mail/service'
 import * as T from '../mail/templates'
+import { deliverability } from '../mail/check'
 
 const CATS = ['world', 'africa', 'business', 'tech', 'climate', 'health', 'culture', 'sport'] as const
 const line = z.string().trim().min(1).max(600)
@@ -244,6 +245,9 @@ export async function adminRoutes(app: FastifyInstance) {
         editions: await q('SELECT n.id, n.subject, n.status, n.recipients, n.delivered, n.failed, n.created_at, u.name AS sent_by FROM newsletters n LEFT JOIN users u ON u.id = n.sent_by ORDER BY n.created_at DESC LIMIT 20'),
       }
     })
+
+    /** The DNS records and settings that decide whether email reaches the inbox or the spam folder. */
+    admin.get('/mail/check', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async () => deliverability())
 
     const templateId = z.enum(TEMPLATES.map((t) => t[0]) as [string, ...string[]])
     const editionIn = z.object({ subject: z.string().trim().min(6).max(150), intro: z.string().trim().max(600).optional(), storyIds: z.array(z.string().max(120)).min(1).max(8), country: z.string().max(3).optional() })

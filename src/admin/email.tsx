@@ -68,6 +68,45 @@ function Preview({ mail, loading }: { mail: Rendered | null; loading: boolean })
   )
 }
 
+type Check = { id: string; label: string; ok: boolean | null; detail: string; fix?: string }
+
+/** Inbox or spam? The checks mail providers make on the sending domain, with what to do about each. */
+function InboxCheck() {
+  const [data, setData] = useState<{ domain: string; checks: Check[] } | null>(null)
+  const [error, setError] = useState('')
+  const run = useCallback(() => {
+    setData(null)
+    setError('')
+    api<{ domain: string; checks: Check[] }>('/admin/mail/check', { timeoutMs: 20000 }).then(setData).catch((e: ApiError) => setError(e.message))
+  }, [])
+  useEffect(run, [run])
+  const problems = data?.checks.filter((c) => c.ok === false).length ?? 0
+  return (
+    <Panel
+      title={!data ? 'Checking your sending domain…' : problems === 0 ? 'Set up to reach the inbox' : `${problems} ${problems === 1 ? 'thing is' : 'things are'} sending your email to spam`}
+      kicker="Inbox or spam"
+      action={<Btn tone="line" size="sm" onClick={run}>Check again</Btn>}
+      flush
+    >
+      {error ? <div className="px-4 pb-4 sm:px-5"><Notice kind="error">{error}</Notice></div> : !data ? <div className="shimmer h-[180px] bg-paper-2" /> : (
+        <ul>
+          {data.checks.map((c) => (
+            <li key={c.id} className="border-t border-rule px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[14.5px] font-semibold">{c.label}</span>
+                <Pill tone={c.ok ? 'good' : c.ok === false ? 'signal' : 'neutral'}>{c.ok ? 'OK' : c.ok === false ? 'Fix this' : 'Check by hand'}</Pill>
+              </div>
+              <p className="mt-1 text-[13.5px] text-muted">{c.detail}</p>
+              {c.fix && <p className="mt-1.5 break-words border-l-[3px] border-signal bg-paper px-3 py-2 text-[13.5px]"><b>What to do: </b>{c.fix}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="border-t border-rule px-4 py-3 text-[12.5px] text-muted sm:px-5">A new sending domain also needs a few weeks of real, wanted email before providers trust it. Send to people who signed up, start small, and expect early emails to land in spam more often than later ones.</p>
+    </Panel>
+  )
+}
+
 function Status({ info }: { info: MailInfo }) {
   if (!info.configured)
     return (
@@ -324,6 +363,7 @@ export function Email() {
         <Kpi label="Failed" value={info.counts.failed_week} note="Emails, last 7 days" />
       </div>
       <Status info={info} />
+      {info.configured && <InboxCheck />}
       <Segmented label="Email" value={tab} onChange={setTab} options={[['compose', 'Morning email'], ['templates', 'All emails', info.templates.length], ['sent', 'Sent', info.editions.length]]} />
       {tab === 'compose' && <Composer info={info} reload={reload} />}
       {tab === 'templates' && <Templates info={info} reload={reload} />}

@@ -212,6 +212,23 @@ What is sent, and when:
 | Account created | New member of staff | An administrator adds them. The first password is never emailed |
 | Password changed | Member of staff | Every time their password changes |
 
+### If email lands in spam
+
+Open **Email** in the dashboard: the **Inbox or spam** panel looks up your sending domain's records and says what
+to fix. The usual causes, most likely first:
+
+1. **No DMARC record.** Resend only asks for SPF and DKIM, but Gmail and Yahoo expect DMARC too. At your DNS host
+   add a TXT record named `_dmarc.yourdomain` with value `v=DMARC1; p=none; rua=mailto:you@yourdomain`.
+2. **Links go to a different domain than the sender.** If email comes from `news@yourdomain` but links point to
+   `…up.railway.app`, filters read it as phishing. Give `web` a custom domain on the same domain and put it first
+   in `SITE_ORIGIN`.
+3. **A new domain.** Providers trust a sender only after some weeks of wanted email. Send to real sign-ups, start
+   small, and ask early readers to move the email to their inbox and reply once.
+4. **No webhook.** Without `RESEND_WEBHOOK_SECRET`, bounced addresses and people who pressed “spam” keep getting
+   email, which damages the domain.
+5. **Tracking turned on in Resend.** Open and click tracking rewrite links through another domain. Leave both off
+   in Resend's domain settings (the app does not use them).
+
 ## Search engines (SEO)
 
 Nothing to set: `web` asks `api` for each page's title, description, keywords and structured data, and serves
