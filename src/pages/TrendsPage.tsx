@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { WebTrends } from '@/components/feed/WebTrends'
 import { CountUp } from '@/components/ui/CountUp'
 import { ArrowDown, ArrowUp, Globe, Map, MapPin, Minus, Play } from 'lucide-react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
@@ -104,6 +105,8 @@ export function TrendsPage() {
           </div>
         </aside>
       </Container>
+
+      <WebTrends level={level.level} />
 
       <VideoTrends />
 

@@ -16,6 +16,8 @@ import { deskUrl, mailConfigured, sendLater, sendMail, siteUrl } from '../mail/s
 import { TEMPLATES, buildEdition, confirmLink, latestStories, ref, sample, sendEdition, unsubscribeLink } from '../mail/service'
 import * as T from '../mail/templates'
 import { deliverability } from '../mail/check'
+import { engineStatus, refreshNow, setBlocked, setSourceEnabled } from '../webtrends/engine'
+import { SOURCES } from '../webtrends/sources'
 
 const CATS = ['world', 'africa', 'business', 'tech', 'climate', 'health', 'culture', 'sport'] as const
 const line = z.string().trim().min(1).max(600)
@@ -146,6 +148,34 @@ export async function adminRoutes(app: FastifyInstance) {
       const busiest = await one(`SELECT extract(hour FROM at)::int AS hour, count(*) AS n FROM events WHERE ${since} GROUP BY 1 ORDER BY n DESC LIMIT 1`, [days])
       const unknown = await one(`SELECT count(*) AS n FROM events WHERE country IS NULL AND ${since}`, [days])
       return { days, totals: num(now), previous: num(before), series: hours.map(num), pages: pages.map(num), referrers: referrers.map(num), clicks: clicks.map(num), searches: searches.map(num), countries: countries.map(num), busiestHour: busiest ? num(busiest) : null, unknownCountry: Number(unknown?.n ?? 0) }
+    })
+
+    /* ---------- Trending on the web: the engine's state and its switches ---------- */
+    admin.get('/web-trends', async () => engineStatus())
+
+    admin.patch('/web-trends/sources/:id', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const { id } = z.object({ id: z.enum(SOURCES.map((s) => s.id) as [string, ...string[]]) }).parse(req.params)
+      const body = z.object({ enabled: z.boolean() }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      await setSourceEnabled(id, body.data.enabled)
+      await audit(userOf(req), 'webtrends.source', id, body.data)
+      return { ok: true }
+    })
+
+    /** Words that must not appear in any list. A term containing one is dropped. */
+    admin.put('/web-trends/blocked', async (req, reply) => {
+      const body = z.object({ terms: z.array(z.string().trim().toLowerCase().min(2).max(60)).max(200) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      await setBlocked([...new Set(body.data.terms)])
+      await audit(userOf(req), 'webtrends.blocked', undefined, { count: body.data.terms.length })
+      return { ok: true }
+    })
+
+    admin.post('/web-trends/refresh', { config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, async (req, reply) => {
+      const body = z.object({ source: z.string().max(20), country: z.string().max(3) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      await refreshNow(body.data.source, body.data.country.toUpperCase())
+      return { ok: true }
     })
 
     /** Trends as readers in one country see them: country, region and global levels. */

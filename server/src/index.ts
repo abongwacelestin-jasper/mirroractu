@@ -22,6 +22,7 @@ import { adminRoutes } from './routes/admin'
 import { publicRoutes } from './routes/public'
 import { backfillCountries, seed } from './seed'
 import { listenForWire } from './wire'
+import { startWebTrends } from './webtrends/engine'
 
 checkConfig()
 startCache()
@@ -60,11 +61,13 @@ if (config.seedContent) await seed()
 await backfillCountries()
 await syncStaff()
 await listenForWire()
+await startWebTrends()
 
 // Housekeeping: drop expired sessions hourly, and readership events after 90 days.
 setInterval(() => {
   q('DELETE FROM sessions WHERE expires_at < now()').catch(() => {})
   q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [config.eventsRetentionDays]).catch(() => {})
+  q("DELETE FROM web_trend_usage WHERE day < current_date - 30").catch(() => {})
   q('DELETE FROM emails WHERE at < now() - make_interval(days => $1)', [config.eventsRetentionDays]).catch(() => {})
   // A confirmation email nobody answered within 30 days: forget the address.
   q("DELETE FROM subscribers WHERE status = 'pending' AND confirm_sent_at < now() - interval '30 days'").catch(() => {})

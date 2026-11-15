@@ -176,6 +176,7 @@ const CLICK: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^promo:(.+)$/, (m) => `Promotion: ${m[1]}`],
   [/^subscribe:(.+)$/, (m) => `Subscribe button (${m[1]})`],
   [/^mailto$/, () => 'Email link'],
+  [/^webtrend:(.+)$/, (m) => `Trending on the web (${m[1]})`],
 ]
 const clickName = (label: string) => {
   for (const [re, name] of CLICK) {

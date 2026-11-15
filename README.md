@@ -356,6 +356,40 @@ Links are built from the **first** address in `SITE_ORIGIN`, so put the real dom
 going live, add the site in Google Search Console and Bing Webmaster Tools and submit
 `/sitemap.xml` and `/news-sitemap.xml`.
 
+## Trending on the web
+
+Beside the newsroom's own trends, the Trends page shows **Trending on the web**: what outside
+sources say is trending for the reader's country, its region and the world
+(`GET /api/v1/web-trends?country=KE`, `src/components/feed/WebTrends.tsx`). It is labelled "Not
+MirrorActu reporting", every list names its source, every link leaves the site, and no pictures
+are loaded from those sources.
+
+| Source | What it gives | Notes |
+|---|---|---|
+| Google Trends | Searches rising fastest today, per country | Free but undocumented. No list for Rwanda and a few others. Remove `google` from `WEB_TRENDS_SOURCES` to stop using it |
+| The GDELT Project | Stories the most outlets are reporting in the last 24 hours | Free, credit required (shown). Strict rate limit. We group articles into stories ourselves |
+| Wikimedia pageviews | Most-read Wikipedia articles yesterday | Public domain. Worldwide, and countries big enough to have a list |
+
+Regional and worldwide lists are built by combining the country lists: what appears in the most
+countries comes first.
+
+**The engine** (`server/src/webtrends/engine.ts`) decides when each list is fetched:
+
+- Lists readers are looking at, and countries with measured readers, refresh at the normal pace
+  (Google 30 min, GDELT 45 min, Wikimedia 6 h); lists nobody asks for drift to a third of that.
+- A list that comes back unchanged is checked a little less often each time.
+- Requests to one source are spaced by a minimum gap, and each source has a daily allowance. If
+  use runs ahead of the clock, everything for that source slows; if it is spent, it stops until
+  tomorrow.
+- If a source answers "too many requests", the whole source pauses, the pause doubles if it
+  happens again, and the gap widens. It narrows after a run of clean answers.
+- A failed fetch never removes a list. The last good one is served until replaced or too old.
+- Only one API instance fetches at a time (a database lock), and all state is in the database.
+
+The dashboard's **Web trends** page shows each source's allowance used, pauses, every list with its
+age and next fetch, a switch per source, and a list of words that must never appear (adult and
+gambling terms are always removed). Variables are in `server/.env.example`.
+
 ## Engagement and the heat map
 
 The dashboard's **Engagement** page (`src/admin/engagement.tsx`, `GET /admin/engagement`) shows, for

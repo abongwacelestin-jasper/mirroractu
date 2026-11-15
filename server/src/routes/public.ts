@@ -14,6 +14,7 @@ import { newsroomAddresses, sendLater, siteUrl, deskUrl } from '../mail/send'
 import { confirmSubscription, offerFacts, ref, requestSubscription, subscriptionStatus, unsubscribe } from '../mail/service'
 import * as T from '../mail/templates'
 import { rates } from '../rates'
+import { webTrends } from '../webtrends/engine'
 import { bodyHtml, feed, headHtml, newsSitemap, robotsTxt, sitemap } from '../seo'
 import { resendWebhook } from '../mail/webhook'
 
@@ -24,7 +25,8 @@ const strict = { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }
 const storyOut = (r: any) => ({ ...r.data, id: r.id, slug: r.slug, version: r.version })
 
 export async function content() {
-  const rows = await q<{ key: string; data: unknown }>('SELECT key, data FROM content')
+  // Dashboard-only settings are kept in the same table; they are not part of the edition.
+  const rows = await q<{ key: string; data: unknown }>("SELECT key, data FROM content WHERE key NOT LIKE 'webTrends%'")
   return Object.fromEntries(rows.map((r) => [r.key, r.data]))
 }
 
@@ -73,6 +75,17 @@ export async function publicRoutes(app: FastifyInstance) {
     const result = await trendLevels(country ?? countryFromHeaders(req.headers) ?? undefined)
     reply.header('Cache-Control', 'public, max-age=20').header('Vary', 'CF-IPCountry, X-Country-Code')
     return { generatedAt: new Date().toISOString(), country: result.country, levels: result.levels, trends: result.levels[result.levels.length - 1].trends }
+  })
+
+  /**
+   * "Trending on the web": what Google searches, the world's news outlets and Wikipedia readers
+   * show is trending, for a country, its region and worldwide. Kept apart from /trends, which
+   * is the newsroom's own ranking. Every list names its source.
+   */
+  app.get('/web-trends', async (req, reply) => {
+    const { country } = z.object({ country: z.string().max(3).optional() }).parse(req.query)
+    reply.header('Cache-Control', 'public, max-age=60')
+    return webTrends(country ?? countryFromHeaders(req.headers) ?? undefined)
   })
 
   app.get('/wire', async (req) => {

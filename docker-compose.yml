@@ -109,6 +109,10 @@ services:
       MAIL_POSTAL_ADDRESS: ${MAIL_POSTAL_ADDRESS:-}
       RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
       RATES_URL: ${RATES_URL:-}
+      # Trending on the web. See server/.env.example.
+      WEB_TRENDS: ${WEB_TRENDS:-}
+      WEB_TRENDS_SOURCES: ${WEB_TRENDS_SOURCES:-}
+      WEB_TRENDS_USER_AGENT: ${WEB_TRENDS_USER_AGENT:-}
       ANALYTICS_SALT: ${ANALYTICS_SALT:-dev-only-salt-change-me}
       SESSION_DAYS: ${SESSION_DAYS:-7}
       LOGIN_MAX_FAILS: ${LOGIN_MAX_FAILS:-5}

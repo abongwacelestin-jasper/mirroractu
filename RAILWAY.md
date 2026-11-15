@@ -229,6 +229,19 @@ to fix. The usual causes, most likely first:
 5. **Tracking turned on in Resend.** Open and click tracking rewrite links through another domain. Leave both off
    in Resend's domain settings (the app does not use them).
 
+## Trending on the web
+
+Nothing to set: `api` fetches Google Trends, GDELT and Wikimedia on its own schedule and the Trends page shows
+them under "Trending on the web". It needs outbound internet, which Railway services have. Optional, on `api`:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `WEB_TRENDS_USER_AGENT` | `MirrorActu/1.0 (https://yourdomain)` | Recommended. Wikimedia asks automated clients to name themselves with a way to be reached |
+| `WEB_TRENDS_SOURCES` | `google,gdelt,wikimedia` | Remove a name to stop using that source |
+| `WEB_TRENDS` | `off` | Stops all fetching |
+
+Watch it in the dashboard under **Web trends**.
+
 ## Search engines (SEO)
 
 Nothing to set: `web` asks `api` for each page's title, description, keywords and structured data, and serves

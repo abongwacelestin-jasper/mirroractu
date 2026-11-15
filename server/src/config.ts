@@ -33,6 +33,13 @@
  *   RATES_URL             where exchange rates come from (JSON with a "rates" object, base USD).
  *                         Defaults to open.er-api.com. Set to "off" to use the built-in table only.
  *
+ * Trending on the web (server/src/webtrends): Google Trends, GDELT and Wikimedia
+ *   WEB_TRENDS            "off" stops all fetching. Lists already fetched stay until they age out.
+ *   WEB_TRENDS_SOURCES    which sources to use, comma separated   (google,gdelt,wikimedia)
+ *   WEB_TRENDS_USER_AGENT how the fetcher names itself to those services. Wikimedia asks for a
+ *                         name with a way to reach you, e.g. "MirrorActu/1.0 (https://yourdomain)".
+ *   WEB_TRENDS_BUDGET_GOOGLE / _GDELT / _WIKIMEDIA   most requests per day to each source
+ *
  * Staff accounts, created automatically on every start (see auth.ts → syncStaff)
  *   ADMIN_EMAILS          administrators, comma separated: "Ada Obi <ada@x.com>, sam@x.com"
  *   EDITOR_EMAILS         editors, same format
@@ -97,6 +104,10 @@ export const config = {
   mailNewsroomTo: (env.MAIL_NEWSROOM_TO ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^\S+@\S+\.\S+$/.test(s)),
   mailPostalAddress: (env.MAIL_POSTAL_ADDRESS ?? '').trim(),
   resendWebhookSecret: env.RESEND_WEBHOOK_SECRET ?? '',
+  webTrends: !/^(off|false|0|no)$/i.test(env.WEB_TRENDS ?? ''),
+  webTrendsSources: (env.WEB_TRENDS_SOURCES || 'google,gdelt,wikimedia').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  webTrendsUserAgent: env.WEB_TRENDS_USER_AGENT || 'news-trends-fetcher/1.0',
+  webTrendsBudget: { google: int('WEB_TRENDS_BUDGET_GOOGLE', 1500), gdelt: int('WEB_TRENDS_BUDGET_GDELT', 1200), wikimedia: int('WEB_TRENDS_BUDGET_WIKIMEDIA', 200) } as Record<string, number>,
   ratesUrl: env.RATES_URL || 'https://open.er-api.com/v6/latest/USD',
   adminOrigins: (env.ADMIN_ORIGIN ?? 'http://localhost:8081,http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   adminGatewayKey: env.ADMIN_GATEWAY_KEY ?? '',
