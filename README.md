@@ -30,7 +30,9 @@ from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. The dashboard is at **`/admin`**.
 ### Getting in
 
 - **Readers** need no account. Everything personal (saved stories, likes, edition) stays in their browser.
-- **Staff** sign in at **`/admin`** (there is a *Staff sign-in* link in the footer under Company).
+- **Staff** sign in at the **dashboard, which is a separate website** with its own address (locally
+  `http://localhost:8081`; in development also `http://localhost:5173/admin`). The public site has no dashboard,
+  no sign-in and no link to one. See *The dashboard is a separate site* below.
 - **Accounts are created for you.** List people in `ADMIN_EMAILS` and `EDITOR_EMAILS` and give a first password
   in `ADMIN_PASSWORD`. Each time the API starts, anyone listed who has no account gets one. At their first
   sign-in the dashboard makes them choose their own password before anything else opens.
@@ -41,6 +43,19 @@ from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. The dashboard is at **`/admin`**.
 - Administrators can also add staff from the dashboard (**Staff**).
 
 Every API setting is listed with its default in `server/.env.example`.
+
+### The dashboard is a separate site
+
+One codebase builds two websites, chosen by `APP_TARGET` at build time (`src/lib/target.ts`):
+
+| Build | Contains | Server config |
+|---|---|---|
+| `site` (default) | The public site only. No dashboard route, code or link; `/admin` is "Not found" | `deploy/nginx.site.conf.template`: answers 404 to `/api/v1/auth/*` and `/api/v1/admin/*` and strips any gateway key a visitor sends |
+| `admin` | The dashboard only, at the root of its own address | `deploy/nginx.admin.conf.template`: adds `ADMIN_GATEWAY_KEY` to forwarded requests, strict content policy, no framing, no indexing |
+
+The API answers sign-in and dashboard requests only if they carry `ADMIN_GATEWAY_KEY` (otherwise "not found") and,
+for changes, only from `ADMIN_ORIGIN`. So the single way in is dashboard address → its server → API.
+With no `APP_TARGET` (`npm run dev`) both run together, with the dashboard under `/admin`.
 
 ### API (`/api/v1`)
 
@@ -55,7 +70,7 @@ Every API setting is listed with its default in `server/.env.example`.
 | `POST /auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Staff sign-in |
 | `/admin/…` | Dashboard: overview and analytics, stories, wire, corrections, enquiries, subscribers, staff, audit log |
 
-### Dashboard (`/admin`)
+### Dashboard
 
 Layout: navigation on the left, the page in the middle, and a live **Now** rail on the right (the wire with a
 quick-file box, what needs an editor, today's trends, service status). Below 1280px the rail opens from the *Now*
@@ -86,7 +101,7 @@ email, two-factor sign-in, and automatic database backups. Market quotes still t
 
 ## Deploy with Docker
 
-Three containers: `web` (nginx serving the site and forwarding `/api/` to the API), `api` (Node) and `db` (Postgres).
+Four containers: `web` (the public site, port 8080), `admin` (the staff dashboard, port 8081), `api` (Node) and `db` (Postgres).
 
 ```
 cp deploy/env.example .env          # set the passwords and SITE_ORIGIN
@@ -100,7 +115,7 @@ Or without Compose: `docker build -t mirroractu .` then `docker run -d -p 8080:8
 | File | What it does |
 |---|---|
 | `Dockerfile` | Stage 1 installs, typechecks and builds with Node 22. Stage 2 copies the result into `nginx-unprivileged` |
-| `deploy/nginx.conf.template` | Sends every page address (including `/fr/…`) to the app, caches hashed assets for a year and media for a week, never caches `index.html`, adds security headers, answers `/healthz` |
+| `deploy/nginx.site.conf.template`, `deploy/nginx.admin.conf.template` | Sends every page address (including `/fr/…`) to the app, caches hashed assets for a year and media for a week, never caches `index.html`, adds security headers, answers `/healthz` |
 | `docker-compose.yml` | The three services, on read-only file systems with no extra privileges, restarting unless stopped |
 | `server/Dockerfile`, `server/railway.json` | The API container and its Railway settings |
 | `railway.json` | Tells Railway to build from the Dockerfile and check `/healthz` |
@@ -115,29 +130,8 @@ On a server:
 
 ### Railway
 
-Three services in one project:
-
-1. **Postgres**: *New → Database → PostgreSQL*.
-2. **api**: *New → GitHub repo* (this repository). In its settings set **Config file path** to `/server/railway.json`
-   (it builds `server/Dockerfile`; leave Root Directory empty). Variables:
-
-   | Variable | Value |
-   |---|---|
-   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
-   | `PORT` | `4000` |
-   | `NODE_ENV` | `production` |
-   | `SITE_ORIGIN` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` (add your own domain after a comma once you have one) |
-   | `ANALYTICS_SALT` | a long random string (`openssl rand -base64 32`) |
-   | `ADMIN_EMAILS` | e.g. `Ada Obi <ada@example.com>, sam@example.com` |
-   | `EDITOR_EMAILS` | optional, same format |
-   | `ADMIN_PASSWORD` | first password for those accounts, 12+ characters |
-
-   Do not give it a public domain: only the web service needs to reach it.
-3. **web**: *New → GitHub repo* (this repository again). It uses the root `railway.json` and `Dockerfile`. Variable:
-   `API_UPSTREAM=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}`. Then **Settings → Networking → Generate Domain**
-   for the public `https://…up.railway.app` address (HTTPS is included); add your own domain in the same place.
-4. Optional on **web**: the `VITE_…` settings from `deploy/env.example`. They are used while building.
-5. Do not set `PORT` on web: Railway provides it. Every push to `main` redeploys both services.
+**The complete Railway guide is in [`RAILWAY.md`](RAILWAY.md)**: four services (Postgres, `api`, `web`, `admin`),
+every variable, how the services connect, custom domains, a check that the dashboard is locked, and troubleshooting.
 
 Railway does not tell the app which country a reader is in, so editions use the device time zone there. For
 IP-accurate editions put Cloudflare in front of the Railway domain (it sends `CF-IPCountry`), or set `VITE_GEO_ENDPOINT`.

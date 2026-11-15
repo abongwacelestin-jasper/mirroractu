@@ -1,0 +1,255 @@
+# Deploying MirrorActu on Railway
+
+This is the full setup: every service, how they connect, and every variable.
+
+> Status: the same containers and settings are tested locally with Docker Compose. They have
+> not been run on Railway itself, so treat the Railway-specific parts (menu names, the
+> `${{…}}` references, private networking) as unverified and check them as you go.
+
+## What you are building
+
+Four services in one Railway project. Two are public, two are private.
+
+```
+                    readers                                  staff
+                       │                                       │
+        https://mirroractu.net                    https://desk.mirroractu.net
+                       │                                       │
+              ┌────────▼────────┐                    ┌─────────▼─────────┐
+              │  web  (public)  │                    │  admin  (public)  │
+              │  public site    │                    │  staff dashboard  │
+              │  no dashboard   │                    │  adds gateway key │
+              └────────┬────────┘                    └─────────┬─────────┘
+                       │  /api/*  (never /api/v1/admin         │  /api/*
+                       │           or /api/v1/auth)            │
+                       └──────────────┬────────────────────────┘
+                                      │ private network
+                             ┌────────▼────────┐
+                             │  api (private)  │
+                             │  no public URL  │
+                             └────────┬────────┘
+                                      │ private network
+                             ┌────────▼────────┐
+                             │ Postgres (priv.)│
+                             └─────────────────┘
+```
+
+| Service | What it is | Public address? | Built from |
+|---|---|---|---|
+| `Postgres` | The database | No | Railway's PostgreSQL |
+| `api` | The API: stories, trends, wire, forms, sign-in, dashboard data | **No** | `server/Dockerfile` |
+| `web` | The public website | Yes | `Dockerfile` (default) |
+| `admin` | The staff dashboard, a separate website | Yes, its own | `Dockerfile` with `APP_TARGET=admin` |
+
+### Why the dashboard is a separate service
+
+- The public site (`web`) contains **no dashboard**: no page, no code, no link. `/admin` there is "Page not found".
+- `web`'s server **refuses** every `/api/v1/auth/…` and `/api/v1/admin/…` request with 404, and strips any gateway key a visitor tries to send.
+- The API only answers sign-in and dashboard requests that carry a secret **gateway key**. Only the `admin` service knows that key and adds it. Without it the API says "not found", as if those routes did not exist.
+- Sign-in and dashboard changes must also come from the dashboard's own address (`ADMIN_ORIGIN`), and the session cookie belongs to that address only.
+- The API and the database have no public address at all.
+
+So the only way in is: the `admin` address → its server → the API. Knowing the public site's address gets you nowhere.
+
+## Before you start
+
+1. The code is on GitHub at `kelvintawe13/mirroractu`, branch `main`.
+2. Generate three secrets on your computer and keep them somewhere safe (a password manager):
+
+   ```
+   openssl rand -hex 32        # ADMIN_GATEWAY_KEY
+   openssl rand -base64 32     # ANALYTICS_SALT
+   openssl rand -base64 18     # ADMIN_PASSWORD (a first password; everyone replaces it)
+   ```
+
+3. Decide the two addresses. To start you can use Railway's generated ones; later use your own, for example
+   `mirroractu.net` for the site and `desk.mirroractu.net` for the dashboard. Pick a dashboard name that is
+   not guessable from the site's name if you want it harder to find.
+
+## Step 1: the project and the database
+
+1. Railway → **New Project** → **Deploy PostgreSQL**.
+2. Leave the service name as **`Postgres`**. The variables below refer to it by that name.
+3. In the Postgres service, turn on **backups**. Nothing in the code backs up the database.
+
+## Step 2: the API (`api`)
+
+1. **New** → **GitHub Repo** → `kelvintawe13/mirroractu`.
+2. Rename the service to **`api`** (Settings → Service Name).
+3. **Settings → Build → Config file path**: `/server/railway.json`. Leave **Root Directory** empty.
+4. **Settings → Networking**: do **not** generate a domain. It must stay private.
+5. **Variables**:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Connects to the database over the private network |
+| `PORT` | `4000` | Set it so the other services can refer to it |
+| `NODE_ENV` | `production` | Turns on HTTPS-only cookies and the checks below |
+| `SITE_ORIGIN` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` | The public site. Reader forms are only accepted from here |
+| `ADMIN_ORIGIN` | `https://${{admin.RAILWAY_PUBLIC_DOMAIN}}` | The dashboard. Sign-in is only accepted from here. Must differ from `SITE_ORIGIN` |
+| `ADMIN_GATEWAY_KEY` | your `openssl rand -hex 32` value | 32+ characters. Shared with `admin` only |
+| `ANALYTICS_SALT` | your `openssl rand -base64 32` value | Anonymises readers in readership counts |
+| `ADMIN_EMAILS` | e.g. `Kelvin Tawe <you@example.com>` | Administrators, comma separated. Created automatically |
+| `ADMIN_PASSWORD` | your first password | 12+ characters. Each person must replace it at first sign-in |
+| `EDITOR_EMAILS` | optional | Editors, same format as `ADMIN_EMAILS` |
+
+The API refuses to start in production if `SITE_ORIGIN`, `ADMIN_ORIGIN`, `ADMIN_GATEWAY_KEY` (32+) or
+`ANALYTICS_SALT` (16+) is missing, or if the two origins are the same. The deploy log says which.
+
+## Step 3: the public site (`web`)
+
+1. **New** → **GitHub Repo** → the same repository.
+2. Rename the service to **`web`**.
+3. No build settings to change: it uses the root `railway.json` and `Dockerfile`.
+4. **Variables**:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `API_UPSTREAM` | `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}` | Where `/api/` requests are sent, privately |
+
+   Do **not** set `PORT` (Railway provides it), `APP_TARGET` or `ADMIN_GATEWAY_KEY` on this service.
+5. **Settings → Networking → Generate Domain**. This is the public address.
+
+## Step 4: the staff dashboard (`admin`)
+
+1. **New** → **GitHub Repo** → the same repository, a third time.
+2. Rename the service to **`admin`**.
+3. No build settings to change: it uses the same root `railway.json` and `Dockerfile`. The variable
+   `APP_TARGET` below is what makes it build the dashboard instead of the site.
+4. **Variables**:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `APP_TARGET` | `admin` | Build the dashboard, with its own locked-down web server |
+| `API_UPSTREAM` | `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}` | Same private address as `web` uses |
+| `ADMIN_GATEWAY_KEY` | `${{api.ADMIN_GATEWAY_KEY}}` | A reference, so the two can never drift apart |
+| `VITE_SITE_URL` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` | For the dashboard's "View the site" links |
+
+5. **Settings → Networking → Generate Domain**. This is the dashboard's address. Do not publish it.
+
+## Step 5: deploy order and first sign-in
+
+1. Deploy in this order: `Postgres` → `api` → `web` and `admin`. If `api` was deployed before the other two
+   had domains, redeploy it once so `SITE_ORIGIN` and `ADMIN_ORIGIN` pick up the real addresses.
+2. Open the **dashboard's** address. You should see the sign-in page.
+3. Sign in with an address from `ADMIN_EMAILS` and the `ADMIN_PASSWORD`.
+4. Choose your own password when asked. Until you do, nothing else opens.
+5. Add other staff from **Staff** in the dashboard, or by adding them to `ADMIN_EMAILS` / `EDITOR_EMAILS` and redeploying `api`.
+
+## How the services connect
+
+| From | To | How | Set by |
+|---|---|---|---|
+| `web` | `api` | Private network, `http://api.railway.internal:4000` | `API_UPSTREAM` on `web` |
+| `admin` | `api` | Private network, same address, plus the gateway key header | `API_UPSTREAM` and `ADMIN_GATEWAY_KEY` on `admin` |
+| `api` | `Postgres` | Private network | `DATABASE_URL` on `api` |
+| Reader's browser | `web` | HTTPS, public | Railway domain / your domain |
+| Staff browser | `admin` | HTTPS, public but unadvertised | Railway domain / your domain |
+| Anyone | `api`, `Postgres` | **Not reachable** | No public domain |
+
+## Your own domains
+
+1. On `web`: Settings → Networking → **Custom Domain** → `mirroractu.net` (and `www` if you want). Add the DNS record Railway shows.
+2. On `admin`: the same, with `desk.mirroractu.net` (or the name you chose).
+3. On `api`, update the two origins so both the Railway and the custom addresses are accepted (comma separated), then redeploy `api`:
+
+   ```
+   SITE_ORIGIN=https://${{web.RAILWAY_PUBLIC_DOMAIN}},https://mirroractu.net
+   ADMIN_ORIGIN=https://${{admin.RAILWAY_PUBLIC_DOMAIN}},https://desk.mirroractu.net
+   ```
+
+4. On `admin`, set `VITE_SITE_URL=https://mirroractu.net` and redeploy (it is used at build time).
+
+If you skip step 3, sign-in and the reader forms are refused from the custom addresses.
+
+## Check that it is locked
+
+Replace the addresses with yours. Each line says what you should get.
+
+```
+# The public site has no dashboard and no sign-in
+curl -s -o /dev/null -w '%{http_code}\n' https://SITE/api/v1/auth/me            # 404
+curl -s -o /dev/null -w '%{http_code}\n' https://SITE/api/v1/admin/overview     # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://SITE/api/v1/auth/login \
+     -H 'Content-Type: application/json' -d '{"email":"x","password":"y"}'      # 404
+
+# The public API still works
+curl -s -o /dev/null -w '%{http_code}\n' https://SITE/api/v1/bootstrap          # 200
+
+# The dashboard answers, and refuses a sign-in that claims to come from elsewhere
+curl -s -o /dev/null -w '%{http_code}\n' https://DESK/healthz                   # 200
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://DESK/api/v1/auth/login \
+     -H 'Content-Type: application/json' -H 'Origin: https://SITE' \
+     -d '{"email":"x","password":"y"}'                                          # 403
+```
+
+Also open `https://SITE/admin` in a browser: it should be the site's "Not found" page.
+
+## All variables in one place
+
+### `api`
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | | Postgres connection |
+| `NODE_ENV` | Yes | | `production` |
+| `PORT` | Yes on Railway | `4000` | Port to listen on |
+| `SITE_ORIGIN` | Yes | | Public site address(es), comma separated |
+| `ADMIN_ORIGIN` | Yes | | Dashboard address(es), comma separated |
+| `ADMIN_GATEWAY_KEY` | Yes | | Secret shared with `admin` |
+| `ANALYTICS_SALT` | Yes | | Anonymises readership |
+| `ADMIN_EMAILS` | First deploy | | Administrators to create |
+| `ADMIN_PASSWORD` | With the lists | | First password for created accounts |
+| `EDITOR_EMAILS` | No | | Editors to create |
+| `ADMIN_FORCE_RESET` | No | | `true` puts listed accounts back on `ADMIN_PASSWORD`. For lockouts. Remove afterwards |
+| `SESSION_DAYS` | No | `7` | How long a sign-in lasts |
+| `LOGIN_MAX_FAILS` | No | `5` | Wrong passwords before a lock |
+| `LOGIN_LOCK_MINUTES` | No | `15` | Length of the lock |
+| `RATE_LIMIT_PER_MINUTE` | No | `300` | Requests per address per minute |
+| `EVENTS_RETENTION_DAYS` | No | `90` | How long readership events are kept |
+| `SEED_CONTENT` | No | `true` | `false` starts with an empty site instead of the 38 sample stories |
+| `LOG_LEVEL` | No | `info` | `fatal`, `error`, `warn`, `info`, `debug` |
+
+### `web`
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `API_UPSTREAM` | Yes | Private address of `api` |
+| `VITE_ADSENSE_CLIENT`, `VITE_ADSENSE_SLOT_LEADERBOARD`, `VITE_ADSENSE_SLOT_MPU`, `VITE_ADSENSE_SLOT_HALFPAGE`, `VITE_ADSENSE_SLOT_INFEED` | No | Google display adverts |
+| `VITE_IMA_AD_TAG` | No | Google video advert tag |
+| `VITE_GEO_ENDPOINT` | No | Country lookup URL |
+
+The `VITE_…` values are used while building, so changing one rebuilds the service.
+
+### `admin`
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `APP_TARGET` | Yes | `admin` |
+| `API_UPSTREAM` | Yes | Private address of `api` |
+| `ADMIN_GATEWAY_KEY` | Yes | `${{api.ADMIN_GATEWAY_KEY}}` |
+| `VITE_SITE_URL` | Recommended | The public site's address |
+
+## If something does not work
+
+| What you see | Likely cause |
+|---|---|
+| `api` crashes on start with "Cannot start: …" | A required variable is missing or too short. The log lists which |
+| Site loads but shows the built-in sample edition and the wire says "Simulated" | `web` cannot reach `api`. Check `API_UPSTREAM` on `web`, and `PORT=4000` on `api` |
+| Dashboard sign-in says "Not found" or nothing happens | `ADMIN_GATEWAY_KEY` on `admin` does not match `api`, or `API_UPSTREAM` is wrong on `admin` |
+| Dashboard sign-in says "Request did not come from the MirrorActu dashboard" | The address in the browser is not in `ADMIN_ORIGIN` on `api` (common after adding a custom domain) |
+| Reader forms say "Request did not come from the MirrorActu site" | The site's address is not in `SITE_ORIGIN` on `api` |
+| The dashboard shows the public site, or the site shows the dashboard | `APP_TARGET` is set on the wrong service. Only `admin` has it |
+| "Wrong email or password" for a brand-new account | The account already existed, so `ADMIN_PASSWORD` was not applied. Use `ADMIN_FORCE_RESET=true` once |
+| Locked out completely | Set `ADMIN_FORCE_RESET=true` on `api`, redeploy, sign in with `ADMIN_PASSWORD`, then remove the variable |
+
+## Stronger locks, if you want them later
+
+The setup above keeps the dashboard off the public site and behind a key, an origin check and a password.
+The dashboard's address is still reachable by anyone who learns it, where they meet the sign-in page. To close that too:
+
+- Put **Cloudflare Access** (or another identity-aware proxy) in front of the dashboard's domain, so only named
+  email addresses even reach the sign-in page.
+- Or restrict the dashboard's domain to your office or VPN addresses at the DNS/CDN layer.
+
+Not built yet, and worth knowing: two-factor sign-in, password reset by email, and an email service for subscribers.
