@@ -143,7 +143,7 @@ export function Layout() {
   return (
     <ToastProvider>
       <SiteActionsContext.Provider value={actions}>
-        <div className="bg-white pb-[calc(60px+env(safe-area-inset-bottom))] pt-[var(--safe-top)] font-display text-base text-ink lg:pb-0">
+        <div className="min-h-[100dvh] bg-white pb-[calc(60px+env(safe-area-inset-bottom))] pt-[var(--safe-top)] font-display text-base text-ink lg:pb-0">
           {/* Fills the notch and status-bar area, so the page never shows through behind it as it scrolls. */}
           <div aria-hidden="true" className="fixed inset-x-0 top-0 z-[57] h-[var(--safe-top)] bg-ink" />
           {showSplash && <BrandSplash />}

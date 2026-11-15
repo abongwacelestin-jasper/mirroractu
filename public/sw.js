@@ -36,10 +36,15 @@ self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') self.skipWaiting()
 })
 
-const put = async (cacheName, request, response) => {
-  if (!response || response.status !== 200 || response.type === 'opaque') return
+/**
+ * Save a copy of a response. Callers pass `response.clone()`, taken before the original is
+ * handed to the page: a response can only be read once, and by the time the cache has opened
+ * the page has usually read it already.
+ */
+const put = async (cacheName, request, copy) => {
+  if (!copy || copy.status !== 200 || copy.type === 'opaque') return
   const cache = await caches.open(cacheName)
-  await cache.put(request, response.clone())
+  await cache.put(request, copy)
   if (cacheName === MEDIA) {
     const keys = await cache.keys()
     if (keys.length > MEDIA_MAX) await Promise.all(keys.slice(0, keys.length - MEDIA_MAX).map((k) => cache.delete(k)))
@@ -49,7 +54,7 @@ const put = async (cacheName, request, response) => {
 const networkFirst = async (request, cacheName, fallbackUrl) => {
   try {
     const response = await fetch(request)
-    put(cacheName, request, response)
+    put(cacheName, request, response.clone()).catch(() => {})
     return response
   } catch {
     return (await caches.match(request)) || (fallbackUrl && (await caches.match(fallbackUrl))) || Response.error()
@@ -59,11 +64,11 @@ const networkFirst = async (request, cacheName, fallbackUrl) => {
 const cacheFirst = async (request, cacheName, refresh) => {
   const cached = await caches.match(request)
   if (cached) {
-    if (refresh) fetch(request).then((r) => put(cacheName, request, r)).catch(() => {})
+    if (refresh) fetch(request).then((r) => put(cacheName, request, r)).catch(() => {})  // nothing else reads this one
     return cached
   }
   const response = await fetch(request)
-  put(cacheName, request, response)
+  put(cacheName, request, response.clone()).catch(() => {})
   return response
 }
 
@@ -80,7 +85,8 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/')) {
     // Staff pages, sign-in and the live stream are never cached. Video needs range requests.
-    if (/\/(admin|auth)\b/.test(url.pathname) || url.pathname.endsWith('/wire/stream')) return
+    // Nor are answers that are personal (an email link's token, where the reader is) or internal.
+    if (/\/(admin|auth|subscription|geo|seo|hooks)\b/.test(url.pathname) || url.pathname.endsWith('/wire/stream')) return
     event.respondWith(networkFirst(request, DATA))
     return
   }
@@ -92,7 +98,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          put(SHELL, '/', response)
+          put(SHELL, '/', response.clone()).catch(() => {})
           return response
         })
         .catch(async () => (await caches.match('/')) || (await caches.match('/offline.html')))

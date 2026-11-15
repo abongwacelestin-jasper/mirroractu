@@ -32,8 +32,16 @@
 }
 
 @layer base {
+  /* The colour behind the page is the header's ink, not white. iPhones show it behind the
+     status bar and the notch, and wherever the page is pulled past its top, so the header
+     reads as one piece with the top of the screen. Each page paints its own background.
+     The page also does not rubber-band past its ends, so nothing slides into that strip. */
   html {
-    background: var(--color-white, #fff);
+    background: var(--color-ink, #0e1424);
+    overscroll-behavior-y: none;
+  }
+  body {
+    overscroll-behavior-y: none;
   }
   body {
     font-family: var(--font-display);
