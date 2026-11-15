@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { siteSocket } from './socket'
 import { api, apiOnline } from '@/lib/api'
 import { useEdition } from '@/lib/edition'
 
@@ -30,9 +31,12 @@ export function useWebTrends(): WebLevel[] {
         })
         .catch(() => {})
     load()
-    const t = window.setInterval(load, 120000)
+    // The API nudges when a list changes; the timer is only the fallback.
+    const off = siteSocket.subscribe((m) => (m.t === 'webtrends' || m.t === 'resync') && load())
+    const t = window.setInterval(load, 300000)
     return () => {
       alive = false
+      off()
       window.clearInterval(t)
     }
   }, [code])

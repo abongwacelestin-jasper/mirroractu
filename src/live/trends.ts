@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { siteSocket } from './socket'
 import { Story, getStory } from '@/data'
 import { getCountry } from '@/data/countries'
 import { TREND_TOPICS, TrendTopic } from '@/data/trends'
@@ -30,7 +31,21 @@ export type TrendLevel = { level: 'country' | 'region' | 'global'; name: string;
 type ApiTrend = Omit<Trend, 'stories'>
 type ApiLevel = Omit<TrendLevel, 'trends'> & { trends: ApiTrend[] }
 
-const REFRESH_MS = 45000
+// With the WebSocket connected, a change arrives as a nudge within a second; this is the fallback pace.
+const REFRESH_MS = 120000
+/** Every mounted trends list, so one nudge from the API reloads them all. */
+const reloaders = new Set<() => void>()
+let listening = false
+function listen() {
+  if (listening) return
+  listening = true
+  let timer = 0
+  siteSocket.subscribe((m) => {
+    if (m.t !== 'trends' && m.t !== 'content' && m.t !== 'resync') return
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => reloaders.forEach((r) => r()), 1200)
+  })
+}
 const cache = new Map<string, ApiLevel[]>()
 
 /**
@@ -47,6 +62,7 @@ export function useTrendLevels(): TrendLevel[] {
 
   useEffect(() => {
     if (!apiOnline) return
+    listen()
     let alive = true
     setRemote(cache.get(code) ?? null)
     const load = () =>
@@ -57,8 +73,10 @@ export function useTrendLevels(): TrendLevel[] {
         })
         .catch(() => {})
     load()
+    reloaders.add(load)
     const t = window.setInterval(load, REFRESH_MS)
     return () => {
+      reloaders.delete(load)
       alive = false
       window.clearInterval(t)
     }

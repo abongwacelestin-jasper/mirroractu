@@ -8,6 +8,7 @@ import { RefreshCw } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { useAdmin } from './AdminApp'
+import { useLive } from './live'
 import { Btn, ConfirmBtn, Empty, Field, Notice, Panel, Pill, Segmented, ago, inputClass, when } from './ui'
 
 type SourceState = {
@@ -66,9 +67,12 @@ export function WebTrendsAdmin() {
   }, [])
   useEffect(() => {
     reload()
-    const t = window.setInterval(reload, 15000)
+    // The engine says when it has fetched something; this timer only keeps "in 5 min" counting down.
+    const t = window.setInterval(reload, 60000)
     return () => window.clearInterval(t)
   }, [reload])
+
+  useLive(['engine', 'webtrends'], reload, 800)
 
   if (error) return <Notice kind="error">{error}</Notice>
   if (!data) return <div className="shimmer h-[420px] bg-paper-2" />

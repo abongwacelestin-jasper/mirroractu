@@ -8,6 +8,7 @@ import { X } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { AFRICA_SHAPES, AFRICA_VIEW, MapShape, WORLD_SHAPES, WORLD_VIEW } from './maps.generated'
+import { useLive, useLiveStatus, usePresence } from './live'
 import { Btn, Empty, Kpi, Notice, Panel, Pill, RankBars, Segmented } from './ui'
 
 type Totals = { pages: number; readers: number; clicks: number; searches: number; referred: number }
@@ -349,17 +350,23 @@ export function Engagement() {
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState('')
   const [pick, setPick] = useState<Pick | null>(null)
+  const wanted = useRef(days)
+  wanted.current = days
+  const load = (period = wanted.current) => api<Data>(`/admin/engagement?days=${period}`).then((d) => period === wanted.current && (setData(d), setError(''))).catch((e: ApiError) => period === wanted.current && setError(e.message))
   useEffect(() => {
-    let live = true
-    const load = () => api<Data>(`/admin/engagement?days=${days}`).then((d) => live && (setData(d), setError(''))).catch((e: ApiError) => live && setError(e.message))
     setData(null)
-    load()
-    const t = window.setInterval(load, 60000)
-    return () => {
-      live = false
-      window.clearInterval(t)
-    }
+    load(days)
+    // A safety net only: figures normally move the moment a reader does something.
+    const t = window.setInterval(() => load(), 300000)
+    return () => window.clearInterval(t)
   }, [days])
+  // Reader activity arrives in small batches. Each batch goes on the "Happening now" list at
+  // once, and the totals, map and lists are worked out again a moment later.
+  const [recent, setRecent] = useState<Event[]>([])
+  useLive(['events'], (m) => m.t === 'events' && setRecent((r) => [...(m.d.items as Event[]).slice().reverse(), ...r].slice(0, 14)), 0)
+  useLive(['events'], () => void load(), 2500)
+  const presence = usePresence()
+  const connection = useLiveStatus()
 
   if (error) return <Notice kind="error">{error}</Notice>
   const d = data
@@ -371,7 +378,7 @@ export function Engagement() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented label="Period" value={days} onChange={setDays} options={[['1', '24 hours'], ['7', '7 days'], ['30', '30 days']]} />
-        <p className="text-[12.5px] text-muted">Readers who allowed measurement only. No IP addresses are stored. Refreshes every minute.</p>
+        <p className="text-[12.5px] text-muted">Readers who allowed measurement only. No IP addresses are stored. {connection === 'live' ? 'Updating live, as it happens.' : 'Live updates are reconnecting; figures refresh every few minutes.'}</p>
       </div>
 
       {!d ? <div className="shimmer h-[420px] bg-paper-2" /> : (
@@ -382,6 +389,37 @@ export function Engagement() {
             <Kpi label="Clicks" value={d.totals.clicks} note={change(d.totals.clicks, d.previous.clicks, d.days)} />
             <Kpi label="Searches" value={d.totals.searches} note={change(d.totals.searches, d.previous.searches, d.days)} />
           </div>
+
+          <Panel title="Right now" kicker={connection === 'live' ? 'Live' : 'Reconnecting'} action={<span className={`flex items-center gap-1.5 text-[12.5px] font-semibold ${connection === 'live' ? 'text-[#1d5b2c]' : 'text-muted'}`}><span className={`size-2 rounded-full ${connection === 'live' ? 'animate-pulse bg-[#1d5b2c]' : 'bg-faint'}`} />{connection === 'live' ? 'Connected' : 'Waiting'}</span>}>
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+              <div>
+                <p className="text-[12.5px] text-muted">Readers on the site</p>
+                <p className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums" aria-live="polite">{presence ? fmt(presence.total) : '–'}</p>
+                <p className="mt-1.5 text-[12.5px] text-muted">Pages open at this moment, everyone included. Countries are shown only for readers who allowed measurement.</p>
+                {presence && Object.keys(presence.countries).length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-1.5">
+                    {Object.entries(presence.countries).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([code, n]) => (
+                      <li key={code}><button type="button" onClick={() => setPick({ by: 'country', value: code, title: countryName(code) })} className="rounded-full border border-ink/20 bg-white px-2.5 py-1 text-[12.5px] font-semibold tabular-nums hover:border-ink">{countryName(code)} {n}</button></li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="mb-1.5 text-[12.5px] text-muted">Happening now</p>
+                {recent.length === 0 ? <p className="border-t border-rule pt-3 text-[14px] text-muted">Waiting for the next reader. Each page opened, click and search appears here the moment it happens.</p> : (
+                  <ol className="border-t border-rule">
+                    {recent.map((e, i) => (
+                      <li key={e.at + i} className={`grid grid-cols-[70px_minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-rule py-1.5 ${i === 0 ? 'rise' : ''}`}>
+                        <time dateTime={e.at} className="font-mono text-[12px] tabular-nums">{clock(e.at)}</time>
+                        <span className="min-w-0 truncate text-[13.5px]"><b className="mr-1.5 font-semibold">{TYPE[e.type][0]}</b>{describe(e)}{e.ref ? <span className="text-muted"> · from {e.ref}</span> : null}</span>
+                        <span className="text-[12px] text-muted">{e.country ? countryName(e.country) : ''}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </div>
+          </Panel>
 
           {empty && <Notice>Nothing has been measured in this period yet. Counts appear as readers accept “Readership measurement” in the cookie notice and use the site.</Notice>}
 

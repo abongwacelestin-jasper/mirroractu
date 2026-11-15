@@ -33,7 +33,7 @@ export default defineConfig({
   define: { __BUILD_STAMP__: JSON.stringify(new Date().toISOString()) },
   server: {
     // In development the API runs on port 4000 (docker compose up db api). In production nginx does this.
-    proxy: { '/api': { target: 'http://localhost:4000', changeOrigin: false, headers: gatewayKey ? { 'X-Admin-Gateway-Key': gatewayKey } : undefined } },
+    proxy: { '/api': { target: 'http://localhost:4000', changeOrigin: false, ws: true, headers: gatewayKey ? { 'X-Admin-Gateway-Key': gatewayKey } : undefined } },
   },
   resolve: {
     // `@/components/...` means `src/components/...`

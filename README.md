@@ -356,6 +356,30 @@ Links are built from the **first** address in `SITE_ORIGIN`, so put the real dom
 going live, add the site in Google Search Console and Bing Webmaster Tools and submit
 `/sitemap.xml` and `/news-sitemap.xml`.
 
+## Real time (WebSockets)
+
+Nothing on the site or the dashboard needs refreshing by hand. Each open page holds one
+WebSocket to the API (`server/src/live.ts`, client in `src/lib/socket.ts`).
+
+| Connection | Who | What arrives |
+|---|---|---|
+| `/api/v1/live` | The public site | The live wire, and a nudge when the newsroom's trends, the outside trends or the edition change, so the page reloads just that part |
+| `/api/v1/admin/live` | The dashboard: signed-in staff, through the dashboard's own server | All of that, plus reader activity as it happens, readers on the site right now and where, and a nudge when the inbox, subscribers, email, an edition being sent, staff or the trends engine change |
+
+- **Dashboard.** A *Live* mark in the top bar shows the connection. Engagement has a **Right now**
+  panel (readers on the site, and each page, click and search as it happens) and its totals, map
+  and lists recalculate a moment after activity arrives. Inbox counts, subscribers, the email log,
+  an edition's progress, stories, the wire and the trends engine all update by themselves.
+- **Between instances.** Changes are announced through Postgres `LISTEN / NOTIFY`
+  (`server/src/bus.ts`), so every API instance tells its own browsers. Readers online are summed
+  across instances through Redis when it is there.
+- **If the connection drops** it retries (1 s, 2 s, 4 s… up to 30 s) and on return every page
+  catches up. Slow timers remain as a safety net. Where a network blocks WebSockets, the site
+  reads the wire as a plain stream instead.
+- **Privacy.** Browsers only listen. The site says one thing: which country edition it shows,
+  and only for readers who allowed measurement. A connection is a number in a count; reader
+  events sent to the dashboard carry no reader code.
+
 ## Dashboard: navigation, bulk actions and resets
 
 - **Top bar.** *Go to…* (also Ctrl/⌘ K) finds any page, action or story from anywhere; *Actions*

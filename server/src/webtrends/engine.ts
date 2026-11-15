@@ -28,6 +28,7 @@ import type pg from 'pg'
 
 import { COUNTRIES, getCountry } from '../../../src/data/geo'
 import { bump, cached } from '../cache'
+import { publish } from '../bus'
 import { config } from '../config'
 import { one, pool, q } from '../db'
 import { RateLimited, SOURCES, Source, WebTrend, clusterArticles, sourceById } from './sources'
@@ -112,6 +113,15 @@ async function count(source: string, column: 'requests' | 'errors' | 'limited') 
 }
 
 async function runOne(source: Source, feed: Feed, slow: number) {
+  try {
+    await fetchOne(source, feed, slow)
+  } finally {
+    // The dashboard's Web trends page follows the engine as it works.
+    publish('engine')
+  }
+}
+
+async function fetchOne(source: Source, feed: Feed, slow: number) {
   lastRequest.set(source.id, Date.now())
   await count(source.id, 'requests')
   const demand = feed.wanted_recently || feed.has_readers || feed.country === '' ? 1 : 3

@@ -23,6 +23,8 @@ import { publicRoutes } from './routes/public'
 import { backfillCountries, seed } from './seed'
 import { listenForWire } from './wire'
 import { startWebTrends } from './webtrends/engine'
+import { listenToBus } from './bus'
+import { liveRoutes, startLive } from './live'
 
 checkConfig()
 startCache()
@@ -51,6 +53,7 @@ app.setErrorHandler((err: any, req, reply) => {
 app.get('/healthz', async () => 'ok\n')
 
 await app.register(async (api) => {
+  await api.register(liveRoutes)
   await api.register(publicRoutes)
   await api.register(adminRoutes)
 }, { prefix: '/api/v1' })
@@ -61,6 +64,8 @@ if (config.seedContent) await seed()
 await backfillCountries()
 await syncStaff()
 await listenForWire()
+await listenToBus()
+startLive()
 await startWebTrends()
 
 // Housekeeping: drop expired sessions hourly, and readership events after 90 days.

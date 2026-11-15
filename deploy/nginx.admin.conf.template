@@ -12,6 +12,12 @@
 # a language prefix such as /fr/trends) is answered with index.html and the app takes it
 # from there.
 
+# "upgrade" for a WebSocket request, nothing (keep-alive) for every other.
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      '';
+}
+
 server {
   # ${PORT} is filled in when the container starts. Hosts such as Railway choose the port
   # themselves and pass it in; everywhere else it is 8080.
@@ -37,7 +43,7 @@ server {
   # may not be framed, and asks search engines not to index it.
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
-  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://$host ws://$host; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
   add_header X-Frame-Options "DENY" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
   add_header Permissions-Policy "camera=(), geolocation=(), payment=(), microphone=(self)" always;
@@ -67,7 +73,9 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-    proxy_set_header Connection "";
+    # Real-time connections (WebSockets) ask to be upgraded; everything else is unchanged.
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
     # The key that tells the API this request came through the dashboard's own server.
     proxy_set_header X-Admin-Gateway-Key "${ADMIN_GATEWAY_KEY}";
     # The live wire is a long-lived stream: do not buffer it or cut it off.
@@ -125,6 +133,6 @@ server {
     add_header Permissions-Policy "camera=(), geolocation=(), payment=(), microphone=(self)" always;
 
     add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://$host ws://$host; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
   }
 }

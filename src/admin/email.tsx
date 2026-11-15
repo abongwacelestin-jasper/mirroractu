@@ -8,6 +8,7 @@ import { Check as CheckIcon, Monitor, Send, Smartphone } from 'lucide-react'
 import { COUNTRIES } from '@/data/geo'
 import { ApiError, api } from '@/lib/api'
 import { useAdmin } from './AdminApp'
+import { useLive } from './live'
 import { Btn, BulkBar, Check, ConfirmBtn, Empty, Field, Kpi, Notice, Panel, Pill, Segmented, inputClass, useSelection, when } from './ui'
 
 type MailInfo = {
@@ -381,13 +382,8 @@ export function Email() {
     api<MailInfo>('/admin/mail').then(setInfo).catch((e: ApiError) => setError(e.message))
   }, [])
   useEffect(reload, [reload])
-  // While an edition is going out, keep its count moving.
-  const sending = info?.editions.some((e) => e.status === 'sending')
-  useEffect(() => {
-    if (!sending) return
-    const t = window.setInterval(reload, 4000)
-    return () => window.clearInterval(t)
-  }, [sending, reload])
+  // Every send, every sign-up and each step of an edition going out arrives as it happens.
+  useLive(['mail', 'newsletter', 'subscribers'], reload, 800)
 
   if (error) return <Notice kind="error">{error}</Notice>
   if (!info) return <div className="shimmer h-[420px] bg-paper-2" />

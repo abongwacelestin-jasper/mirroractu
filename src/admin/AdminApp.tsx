@@ -13,6 +13,7 @@ import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/f
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
 import { Email } from './email'
 import { WebTrendsAdmin } from './webtrends'
+import { useLive, useLiveStatus as useDashboardLive, usePresenceKeeper } from './live'
 import { AccountMenu, GoItem, GoTo, Menu as DropMenu } from './navbar'
 
 // The Engagement page carries the map outlines, so it is loaded only when opened.
@@ -121,10 +122,14 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     api<OverviewData>('/admin/overview').then(setOverview).catch(() => {})
     api<{ corrections: Correction[] }>('/admin/corrections').then((d) => setCorrections(d.corrections)).catch(() => {})
   }, [])
-  // Refresh the shared figures on arrival, on every page change, and each minute.
+  // Refresh the shared figures on arrival and on every page change. After that the API says
+  // when something changed; the slow timer is only a safety net for a lost connection.
+  useLive(['content', 'trends', 'inbox', 'wire', 'wire.changed', 'subscribers', 'mail', 'events'], reload, 1500)
+  const live = useDashboardLive()
+  usePresenceKeeper()
   useEffect(() => {
     reload()
-    const t = window.setInterval(reload, 60000)
+    const t = window.setInterval(reload, 300000)
     return () => window.clearInterval(t)
   }, [reload, tab])
   const mainRef = useRef<HTMLElement>(null)
@@ -229,6 +234,9 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
                 <h1 className="truncate text-[19px] font-extrabold tracking-[-0.03em] sm:text-[22px]">{title}</h1>
                 <p className="hidden truncate text-[12.5px] text-muted sm:block">{sub} · {EDITION_DATE}</p>
               </div>
+              <span role="status" title={live === 'live' ? 'Connected: this dashboard updates by itself, as things happen' : live === 'connecting' ? 'Connecting to live updates' : 'Live updates are reconnecting. Figures refresh every few minutes meanwhile.'} className={twMerge('hidden flex-none items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold sm:flex', live === 'live' ? 'border-[#1d5b2c]/30 bg-[#eef6ef] text-[#1d5b2c]' : 'border-ink/20 bg-white text-muted')}>
+                <span className={twMerge('size-2 rounded-full', live === 'live' ? 'animate-pulse bg-[#1d5b2c]' : 'bg-faint')} />{live === 'live' ? 'Live' : live === 'connecting' ? 'Connecting' : 'Reconnecting'}
+              </span>
               <GoTo items={goItems} onOpenStory={(id) => navigate(adminPath(`stories?edit=${encodeURIComponent(id)}`))} />
               <Btn tone="signal" size="sm" onClick={() => navigate(adminPath('stories?new=1'))} className="flex-none" aria-label="New story"><Plus className="size-4" /><span className="hidden sm:inline">New story</span></Btn>
               <span className="hidden sm:block"><DropMenu ariaLabel="Quick actions" label="Actions" items={actions.map((a) => ({ label: a.label, hint: a.hint, run: a.run }))} /></span>

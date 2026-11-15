@@ -15,6 +15,7 @@ import { confirmSubscription, offerFacts, ref, requestSubscription, subscription
 import * as T from '../mail/templates'
 import { rates } from '../rates'
 import { webTrends } from '../webtrends/engine'
+import { publish } from '../bus'
 import { bodyHtml, feed, headHtml, newsSitemap, robotsTxt, sitemap } from '../seo'
 import { resendWebhook } from '../mail/webhook'
 
@@ -127,6 +128,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const country = countryFromHeaders(req.headers) ?? (body.data.country && /^[A-Za-z]{2}$/.test(body.data.country) ? body.data.country.toUpperCase() : null)
     // The same answer whether or not the address was already there, so the form cannot be used to test who subscribes.
     await requestSubscription(body.data.email, { source: body.data.source, country, lang: body.data.lang })
+    publish('subscribers')
     return { ok: true }
   })
 
@@ -145,6 +147,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
     const p = token.safeParse(req.body)
     const done = p.success ? await confirmSubscription(p.data.token) : null
+    if (done) publish('subscribers')
     return done ?? reply.code(404).send(gone)
   })
 
@@ -152,6 +155,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
     const p = token.safeParse(req.body)
     const done = p.success ? await unsubscribe(p.data.token) : null
+    if (done) publish('subscribers')
     return done ?? reply.code(404).send(gone)
   })
 
@@ -181,6 +185,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ error: 'Describe what we should check, in at least a few words.' })
     const row = await one<{ id: string }>('INSERT INTO corrections (story_title, message, email) VALUES ($1, $2, $3) RETURNING id', [body.data.storyTitle || null, body.data.message, body.data.email || null])
     const reference = ref('C', row!.id)
+    publish('inbox')
     // The reader's receipt names the story only if it is one of ours, and never repeats what was
     // typed: otherwise the form could be used to send anyone a message of the sender's choosing.
     const known = body.data.storyTitle ? await one("SELECT 1 FROM stories WHERE published AND data->>'h' = $1", [body.data.storyTitle]) : null
@@ -198,6 +203,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!offer) return reply.code(400).send({ error: 'That offer is no longer listed.' })
     const row = await one<{ id: string }>('INSERT INTO enquiries (advertiser_id, offer_id, email) VALUES ($1, $2, $3) RETURNING id', [body.data.advertiserId, body.data.offerId, body.data.email])
     const reference = ref('E', row!.id)
+    publish('inbox')
     sendLater({ to: body.data.email, kind: 'enquiry.received', mail: T.enquiryReceived({ site: siteUrl() }, { ref: reference, offer }) })
     const staffMail = T.staffNewEnquiry({ site: siteUrl() }, deskUrl(), { ref: reference, offer, email: body.data.email })
     for (const to of await newsroomAddresses()) sendLater({ to, kind: 'staff.enquiry', mail: staffMail, replyTo: body.data.email })
@@ -231,6 +237,8 @@ export async function publicRoutes(app: FastifyInstance) {
     // Only the page's path is kept: anything after "?" could carry something personal.
     const path = b.path.split(/[?#]/)[0]
     await q('INSERT INTO events (type, story_id, path, country, lang, visitor, label, ref, value) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.type, b.storyId ?? null, path, countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req), b.label || null, b.ref || null, b.value ?? null])
+    // The dashboard sees it as it happens. No reader code is included.
+    publish('event', { at: new Date().toISOString(), type: b.type, path, label: b.label || null, ref: b.ref || null, value: b.value ?? null, country: countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), lang: b.lang ?? null })
     return reply.code(204).send()
   })
 }

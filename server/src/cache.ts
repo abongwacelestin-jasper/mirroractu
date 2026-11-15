@@ -9,6 +9,7 @@
  */
 import Redis from 'ioredis'
 
+import { publish } from './bus'
 import { config } from './config'
 
 let redis: Redis | null = null
@@ -59,6 +60,8 @@ async function version(group: string) {
 
 /** Everything cached under `group` is now out of date. */
 export async function bump(group: string) {
+  // Open pages and the dashboard are told at once that this has changed (see live.ts).
+  publish(group)
   const next = ((versions.get(group)?.value ?? 0) + 1) | 0
   versions.set(group, { value: next, checked: Date.now() })
   if (redis?.status === 'ready') {

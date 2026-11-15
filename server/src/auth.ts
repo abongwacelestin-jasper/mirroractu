@@ -10,6 +10,7 @@
  *  - Requests that change data must come from the dashboard's address (Origin check) and carry
  *    the session cookie, which browsers do not send on cross-site form posts (SameSite=Strict).
  */
+import { publish } from './bus'
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { FastifyReply, FastifyRequest } from 'fastify'
@@ -123,6 +124,8 @@ export function requireUser(role?: 'admin', allowPending = false) {
 export const userOf = (req: FastifyRequest) => (req as any).user as User
 
 export async function audit(user: User | null, action: string, target?: string, detail?: unknown) {
+  // Every change staff make is also a nudge to the other open dashboards (see live.ts).
+  publish(action.startsWith('user') ? 'staff' : action.startsWith('correction') || action.startsWith('enquir') ? 'inbox' : action.startsWith('subscriber') ? 'subscribers' : action.startsWith('newsletter') || action.startsWith('mail') ? 'mail' : action.startsWith('webtrends') ? 'engine' : action.startsWith('wire') ? 'wire.changed' : 'audit')
   await q('INSERT INTO audit_log (user_id, action, target, detail) VALUES ($1, $2, $3, $4)', [user?.id ?? null, action, target ?? null, detail ? JSON.stringify(detail) : null])
 }
 

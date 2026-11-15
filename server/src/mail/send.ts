@@ -7,6 +7,7 @@
  */
 import { config } from '../config'
 import { q } from '../db'
+import { publish } from '../bus'
 
 export type Mail = { subject: string; html: string; text: string }
 export type Outgoing = { to: string; kind: string; mail: Mail; headers?: Record<string, string>; replyTo?: string }
@@ -28,6 +29,7 @@ const payload = (m: Outgoing) => ({
 
 async function record(m: Outgoing, status: 'sent' | 'failed' | 'not_configured', providerId?: string, error?: string) {
   await q('INSERT INTO emails (kind, recipient, subject, status, provider_id, error) VALUES ($1, $2, $3, $4, $5, $6)', [m.kind, m.to, m.mail.subject.slice(0, 300), status, providerId ?? null, error?.slice(0, 500) ?? null]).catch(() => {})
+  publish('mail')
 }
 
 async function resend(path: string, body: unknown): Promise<{ ok: true; data: any } | { ok: false; error: string }> {

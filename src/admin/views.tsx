@@ -9,12 +9,13 @@ import { storyMedia } from '@/data/media'
 import { ApiError, api } from '@/lib/api'
 import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { OverviewData, PasswordInput, useAdmin } from './AdminApp'
+import { useLive } from './live'
 
 type OverviewTrend = OverviewData['trends'][number]
 import { Avatar, Btn, BulkBar, Check, ConfirmBtn, DayBars, Empty, Field, Kpi, Notice, Panel, Pill, RankBars, Segmented, ago, inputClass, useSelection, when } from './ui'
 
 /** Load something from the API, with a way to load it again. */
-function useLoad<T>(path: string) {
+function useLoad<T>(path: string, topics: string[] = []) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState('')
   const reload = useCallback(() => {
@@ -26,6 +27,8 @@ function useLoad<T>(path: string) {
       .catch((e: ApiError) => setError(e.message))
   }, [path])
   useEffect(reload, [reload])
+  // Loaded again the moment the API says one of these subjects changed (see ./live.ts).
+  useLive(topics, reload)
   return { data, error, reload }
 }
 
@@ -182,7 +185,7 @@ const TIER_TONE = { high: 'ink', medium: 'neutral', low: 'neutral' } as const
 
 export function Stories() {
   const { user, reload: reloadShared } = useAdmin()
-  const { data, error, reload } = useLoad<{ stories: AdminStory[] }>('/admin/stories')
+  const { data, error, reload } = useLoad<{ stories: AdminStory[] }>('/admin/stories', ['content'])
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState<AdminStory | null>(null)
   const [filter, setFilter] = useState('')
@@ -449,7 +452,7 @@ const KIND_TONE: Record<string, 'signal' | 'neutral'> = { confirmed: 'signal', u
 
 export function Wire() {
   const { reload: reloadShared } = useAdmin()
-  const { data, reload } = useLoad<{ items: WireRow[] }>('/wire?limit=60')
+  const { data, reload } = useLoad<{ items: WireRow[] }>('/wire?limit=60', ['wire', 'wire.changed'])
   const stories = useLoad<{ stories: AdminStory[] }>('/admin/stories').data?.stories ?? []
   const [f, setF] = useState({ cat: 'world' as CategoryId, kind: 'update', text: '', storyId: '' })
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -562,7 +565,7 @@ function CloseReport({ correction, onDone }: { correction: { id: number; email: 
 
 export function InboxView() {
   const { corrections, reload } = useAdmin()
-  const enquiries = useLoad<{ enquiries: { id: number; advertiser_id: string; offer_id: string; email: string; created_at: string }[] }>('/admin/enquiries')
+  const enquiries = useLoad<{ enquiries: { id: number; advertiser_id: string; offer_id: string; email: string; created_at: string }[] }>('/admin/enquiries', ['inbox'])
   const [tab, setTab] = useState<'waiting' | 'done' | 'enquiries'>('waiting')
   const waiting = corrections.filter((c) => c.status === 'open' || c.status === 'checking')
   const done = corrections.filter((c) => c.status === 'corrected' || c.status === 'no_change')
@@ -652,8 +655,8 @@ export function InboxView() {
 
 export function Subscribers() {
   const { user } = useAdmin()
-  const { data, error, reload } = useLoad<{ subscribers: { id: number; email: string; status: string; source: string | null; country: string | null; created_at: string }[] }>('/admin/subscribers')
-  const mail = useLoad<{ configured: boolean; counts: { never_asked: number } }>('/admin/mail')
+  const { data, error, reload } = useLoad<{ subscribers: { id: number; email: string; status: string; source: string | null; country: string | null; created_at: string }[] }>('/admin/subscribers', ['subscribers'])
+  const mail = useLoad<{ configured: boolean; counts: { never_asked: number } }>('/admin/mail', ['subscribers'])
   const [filter, setFilter] = useState('')
   const [asked, setAsked] = useState('')
   const neverAsked = mail.data?.counts.never_asked ?? 0
@@ -731,7 +734,7 @@ export function Subscribers() {
 
 export function Staff() {
   const { user: me } = useAdmin()
-  const { data, error, reload } = useLoad<{ users: { id: number; email: string; name: string; role: 'admin' | 'editor'; disabled: boolean; created_at: string }[] }>('/admin/users')
+  const { data, error, reload } = useLoad<{ users: { id: number; email: string; name: string; role: 'admin' | 'editor'; disabled: boolean; created_at: string }[] }>('/admin/users', ['staff'])
   const [f, setF] = useState({ name: '', email: '', role: 'editor', password: '' })
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [resetting, setResetting] = useState<number | null>(null)
@@ -810,7 +813,7 @@ const ACTION: Record<string, string> = {
 }
 
 export function Audit() {
-  const { data, error } = useLoad<{ entries: { id: number; at: string; action: string; target: string | null; detail: any; user_name: string | null }[] }>('/admin/audit')
+  const { data, error } = useLoad<{ entries: { id: number; at: string; action: string; target: string | null; detail: any; user_name: string | null }[] }>('/admin/audit', ['audit', 'staff', 'inbox', 'subscribers', 'mail', 'engine', 'content', 'wire.changed'])
   const [filter, setFilter] = useState<'all' | 'content' | 'access'>('all')
   if (error) return <Notice kind="error">{error}</Notice>
   const access = (a: string) => /^(login|password|user)/.test(a)

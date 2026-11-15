@@ -229,6 +229,13 @@ to fix. The usual causes, most likely first:
 5. **Tracking turned on in Resend.** Open and click tracking rewrite links through another domain. Leave both off
    in Resend's domain settings (the app does not use them).
 
+## Real time (WebSockets)
+
+Nothing to set. The site and the dashboard each open a WebSocket to `api` through their own web server, and
+Railway passes WebSockets through. If you put Cloudflare in front, WebSockets are on by default there too.
+To check: the dashboard's top bar shows **Live**; if it says *Reconnecting* for more than a minute, look at the
+`api` deploy log for `Live: WebSockets ready`.
+
 ## Trending on the web
 
 Nothing to set: `api` fetches Google Trends, GDELT and Wikimedia on its own schedule and the Trends page shows

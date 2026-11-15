@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto'
 import { ADVERTISERS } from '../../../src/data/offers'
 import { getCountry } from '../../../src/data/geo'
 import { one, q } from '../db'
+import { publish } from '../bus'
 import { trendLevels } from '../trends'
 import { type Mail, type Outgoing, deskUrl, sendLater, sendMail, sendMany, siteUrl } from './send'
 import * as T from './templates'
@@ -143,8 +144,9 @@ export async function sendEdition(id: number, e: EditionIn) {
       const mine = unsubscribeLink(r.token)
       out.push({ to: r.email, kind: 'newsletter', mail: { subject: m.subject, html: m.html.split(MARK).join(mine), text: m.text.split(MARK).join(mine) }, headers: listHeaders(r.token) })
     }
-    const result = await sendMany(out, (sent, failed) => void q('UPDATE newsletters SET delivered = $2, failed = $3 WHERE id = $1', [id, sent, failed]).catch(() => {}))
+    const result = await sendMany(out, (sent, failed) => void q('UPDATE newsletters SET delivered = $2, failed = $3 WHERE id = $1', [id, sent, failed]).then(() => publish('newsletter')).catch(() => {}))
     await q('UPDATE newsletters SET status = $2, delivered = $3, failed = $4 WHERE id = $1', [id, result.sent === 0 && result.failed > 0 ? 'failed' : 'sent', result.sent, result.failed])
+    publish('newsletter')
   } catch (err) {
     console.error('Newsletter send failed', err)
     await q("UPDATE newsletters SET status = 'failed' WHERE id = $1", [id]).catch(() => {})

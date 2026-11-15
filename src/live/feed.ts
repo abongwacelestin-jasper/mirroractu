@@ -9,6 +9,7 @@
  * reached, a simulated wire stands in so the page still works. Market quotes are not in the
  * API yet and drift locally.
  */
+import { siteSocket } from './socket'
 import { useMemo, useSyncExternalStore } from 'react'
 
 import type { CategoryId } from '@/data'
@@ -113,14 +114,49 @@ function simulate() {
   )
 }
 
+let leaveSocket: (() => void) | null = null
+
 /**
- * Connect to the wire. With the API online this is a live stream (server-sent events): the
- * last forty items arrive first, then each new one the moment an editor files it. If the API
- * is offline, or the stream fails before it opens, the simulated wire takes over.
+ * Connect to the wire. With the API online it arrives over the site's WebSocket: the last
+ * forty items first, then each new one the moment an editor files it. If the WebSocket cannot
+ * be opened (some networks block them) the same wire is read as a plain stream instead, and
+ * if the API is offline altogether the simulated wire takes over.
  */
 function connect() {
   tickQuotes()
-  if (!apiOnline || typeof EventSource === 'undefined') return simulate()
+  if (!apiOnline) return simulate()
+  const fill = (list: ApiWire[]) => {
+    const items = list.map(fromApi)
+    next = Math.max(next, ...items.map((i) => i.id + 1))
+    set({ status: 'live', items, source: 'api' })
+  }
+  const add = (w: ApiWire) => {
+    const item = fromApi(w)
+    if (state.items.some((i) => i.id === item.id)) return
+    set({ items: [item, ...state.items].slice(0, KEEP) })
+  }
+  if (typeof WebSocket !== 'undefined') {
+    leaveSocket = siteSocket.subscribe((m) => {
+      if (m.t === 'wire.backfill') fill(m.d)
+      if (m.t === 'wire') add(m.d)
+    })
+    // Give the WebSocket a few seconds. If it never opens, read the stream instead.
+    timers.push(
+      window.setTimeout(() => {
+        if (siteSocket.opened() || state.source === 'api') return
+        leaveSocket?.()
+        leaveSocket = null
+        stream_()
+      }, 5000)
+    )
+    return
+  }
+  stream_()
+}
+
+/** The wire as server-sent events: the fallback when a WebSocket cannot be opened. */
+function stream_() {
+  if (typeof EventSource === 'undefined') return simulate()
   let opened = false
   stream = new EventSource('/api/v1/wire/stream')
   stream.addEventListener('backfill', (e) => {
@@ -144,6 +180,8 @@ function connect() {
 }
 
 function disconnect() {
+  leaveSocket?.()
+  leaveSocket = null
   stream?.close()
   stream = null
   timers.forEach((t) => {
