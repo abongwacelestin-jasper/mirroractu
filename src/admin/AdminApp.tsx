@@ -8,14 +8,16 @@ import { Logo } from '@/components/brand/Logo'
 import { CATEGORIES, CategoryId, EDITION_DATE } from '@/data'
 import { ApiError, api } from '@/lib/api'
 import { dismissBoot } from '@/lib/boot'
+import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/feed'
 import { StickyRail } from '@/components/ui/StickyRail'
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
 import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire } from './views'
 
 /**
- * The staff dashboard, at /admin. Everything here talks to /api/v1/admin, which only answers
- * signed-in staff. Editors manage stories, the wire and the inbox; administrators can also
+ * The staff dashboard. In production it is its own website on its own address (see
+ * lib/target.ts); the public site contains none of this. Everything here talks to
+ * /api/v1/admin, which only answers signed-in staff arriving through the dashboard's own server. Editors manage stories, the wire and the inbox; administrators can also
  * manage staff, export subscribers and read the audit log.
  *
  * Layout: navigation on the left, the page in the middle, and a live "Now" rail on the right.
@@ -138,7 +140,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
             return (
               <Link
                 key={id}
-                to={`/admin/${id}`}
+                to={adminPath(id)}
                 aria-current={active ? 'page' : undefined}
                 className={twMerge(
                   'relative flex items-center gap-3 px-3 py-2 text-[14.5px] font-medium transition-colors duration-150',
@@ -177,15 +179,17 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
       <div className="min-h-[100dvh] bg-paper font-display text-ink lg:grid lg:grid-cols-[250px_minmax(0,1fr)]" translate="no">
         {/* Navigation: a fixed column from 1024px */}
         <aside className="sticky top-0 hidden h-[100dvh] flex-col overflow-hidden bg-ink text-white lg:flex">
-          <Link to="/admin/overview" className="flex items-center gap-2.5 px-5 pb-1 pt-5">
+          <Link to={adminPath('overview')} className="flex items-center gap-2.5 px-5 pb-1 pt-5">
             <Logo className="size-8" />
             <span className="text-[21px] font-extrabold tracking-[-0.035em]">Mirror<b className="font-extrabold text-signal">Actu</b></span>
           </Link>
           <p className="px-5 pb-5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">Newsroom dashboard</p>
           <div className="min-h-0 flex-1 px-2">{navList(true)}</div>
-          <Link to="/" className="mx-3 mb-3 flex items-center justify-center gap-2 rounded-full border border-rule-dark py-2 text-[13.5px] font-semibold text-mirror-light transition-colors hover:border-white hover:text-white">
-            <ExternalLink className="size-4" /> View the site
-          </Link>
+          {HAS_SITE_LINK && (
+            <a href={SITE_URL || '/'} className="mx-3 mb-3 flex items-center justify-center gap-2 rounded-full border border-rule-dark py-2 text-[13.5px] font-semibold text-mirror-light transition-colors hover:border-white hover:text-white">
+              <ExternalLink className="size-4" /> View the site
+            </a>
+          )}
           {userCard(true)}
           <p className="px-5 pb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-mirror/60">{VERSION}</p>
         </aside>
@@ -200,7 +204,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
                 <h1 className="truncate text-[19px] font-extrabold tracking-[-0.03em] sm:text-[22px]">{title}</h1>
                 <p className="hidden truncate text-[12.5px] text-muted sm:block">{sub} · {EDITION_DATE}</p>
               </div>
-              <Btn tone="signal" size="sm" onClick={() => navigate('/admin/stories?new=1')} className="flex-none" aria-label="New story"><Plus className="size-4" /><span className="hidden sm:inline">New story</span></Btn>
+              <Btn tone="signal" size="sm" onClick={() => navigate(adminPath('stories?new=1'))} className="flex-none" aria-label="New story"><Plus className="size-4" /><span className="hidden sm:inline">New story</span></Btn>
               <Btn tone="line" size="sm" onClick={() => setRail(true)} className="flex-none xl:hidden" aria-label="Open the Now panel">
                 <LiveDot /> Now{openCorrections > 0 && <span className="rounded-full bg-signal px-1.5 text-[11px] font-bold leading-[18px] text-ink">{openCorrections}</span>}
               </Btn>
@@ -234,7 +238,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
               const active = current.id === id
               return (
                 <li key={id}>
-                  <Link to={`/admin/${id}`} aria-current={active ? 'page' : undefined} className={twMerge('relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-semibold', active ? 'text-white' : 'hover:text-white')}>
+                  <Link to={adminPath(id)} aria-current={active ? 'page' : undefined} className={twMerge('relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-semibold', active ? 'text-white' : 'hover:text-white')}>
                     {active && <span aria-hidden="true" className="absolute inset-x-[30%] top-0 h-[3px] rounded-b-full bg-signal" />}
                     <span className="relative">
                       <t.Icon className="size-[21px]" strokeWidth={active ? 2.4 : 1.9} />
@@ -255,7 +259,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
 
         <Drawer open={menu} onClose={() => setMenu(false)} title="Menu" side="left">
           <div className="-mx-1">{navList(false)}</div>
-          <Link to="/" className="mb-3 flex items-center justify-center gap-2 rounded-full border border-ink/30 bg-white py-2.5 text-[14px] font-semibold"><ExternalLink className="size-4" /> View the site</Link>
+          {HAS_SITE_LINK && <a href={SITE_URL || '/'} className="mb-3 flex items-center justify-center gap-2 rounded-full border border-ink/30 bg-white py-2.5 text-[14px] font-semibold"><ExternalLink className="size-4" /> View the site</a>}
           <div className="-mx-1 bg-white">{userCard(false)}</div>
         </Drawer>
         <Drawer open={rail} onClose={() => setRail(false)} title="Now"><NowRail /></Drawer>
@@ -346,7 +350,7 @@ function NowRail() {
             </li>
           ))}
         </ol>
-        <Link to="/admin/wire" className="mt-2 inline-block text-[13px] font-semibold underline decoration-signal decoration-2 underline-offset-4">Open the wire desk</Link>
+        <Link to={adminPath('wire')} className="mt-2 inline-block text-[13px] font-semibold underline decoration-signal decoration-2 underline-offset-4">Open the wire desk</Link>
       </RailBlock>
 
       <RailBlock title="Needs an editor" action={open.length > 0 ? <Pill tone="signal">{open.length} open</Pill> : <Pill tone="good">All clear</Pill>}>
@@ -354,7 +358,7 @@ function NowRail() {
         <ul>
           {open.slice(0, 3).map((c) => (
             <li key={c.id} className="border-b border-rule py-2 last:border-b-0">
-              <Link to="/admin/inbox" className="group block">
+              <Link to={adminPath('inbox')} className="group block">
                 <span className="flex items-center justify-between gap-2 text-[11.5px] text-muted"><span>Correction</span><span>{ago(c.created_at)}</span></span>
                 <span className="line-clamp-2 text-[13.5px] leading-snug decoration-signal decoration-2 underline-offset-4 group-hover:underline">{c.message}</span>
               </Link>
@@ -362,7 +366,7 @@ function NowRail() {
           ))}
           {!!overview?.counts.drafts && (
             <li className="py-2">
-              <Link to="/admin/stories" className="flex items-center justify-between gap-2 text-[13.5px] font-semibold hover:underline"><span>Unpublished stories</span><Pill tone="warn">{overview.counts.drafts}</Pill></Link>
+              <Link to={adminPath('stories')} className="flex items-center justify-between gap-2 text-[13.5px] font-semibold hover:underline"><span>Unpublished stories</span><Pill tone="warn">{overview.counts.drafts}</Pill></Link>
             </li>
           )}
         </ul>
@@ -401,10 +405,10 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-[100dvh] grid-rows-[auto_1fr] bg-white font-display text-ink lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:grid-rows-1" translate="no">
       <div className="relative flex flex-col justify-between overflow-hidden bg-ink px-5 py-6 text-white sm:px-10 sm:py-8 lg:px-14 lg:py-12">
-        <Link to="/" className="flex items-center gap-2.5 self-start">
+        <div className="flex items-center gap-2.5 self-start">
           <AnimatedLogo className="size-9 lg:size-11" />
           <span className="text-[24px] font-extrabold tracking-[-0.035em] lg:text-[30px]">Mirror<b className="font-extrabold text-signal">Actu</b></span>
-        </Link>
+        </div>
         <div className="mt-6 lg:mt-0">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-mirror">Newsroom dashboard</p>
           <p className="mt-1.5 font-serif text-[clamp(30px,6vw,64px)] leading-[1.12] tracking-[-0.015em]">
@@ -472,7 +476,7 @@ function Login({ onDone }: { onDone: (u: User) => void }) {
         <div className="mt-7 grid gap-2 border-t border-rule pt-5 text-[13.5px] text-muted">
           <p>New here? An administrator creates your account and gives you a first password.</p>
           <p>Locked out? Wrong passwords lock an account for a short while. An administrator can reset it.</p>
-          <Link to="/" className="mt-1 justify-self-start font-semibold text-ink underline decoration-signal decoration-2 underline-offset-4">Back to the site</Link>
+          {HAS_SITE_LINK && <a href={SITE_URL || '/'} className="mt-1 justify-self-start font-semibold text-ink underline decoration-signal decoration-2 underline-offset-4">Back to the site</a>}
           <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">{VERSION}</p>
         </div>
       </form>

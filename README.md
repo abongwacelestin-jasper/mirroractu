@@ -118,10 +118,20 @@ On a server:
 Three services in one project:
 
 1. **Postgres**: *New → Database → PostgreSQL*.
-2. **api**: *New → GitHub repo* (this repository). In its settings set **Config file path** to `server/railway.json`
-   (it builds `server/Dockerfile`). Variables:
-   `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`, `SITE_ORIGIN=https://<your site address>`,
-   `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ characters), `ANALYTICS_SALT` (a long random string).
+2. **api**: *New → GitHub repo* (this repository). In its settings set **Config file path** to `/server/railway.json`
+   (it builds `server/Dockerfile`; leave Root Directory empty). Variables:
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+   | `PORT` | `4000` |
+   | `NODE_ENV` | `production` |
+   | `SITE_ORIGIN` | `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` (add your own domain after a comma once you have one) |
+   | `ANALYTICS_SALT` | a long random string (`openssl rand -base64 32`) |
+   | `ADMIN_EMAILS` | e.g. `Ada Obi <ada@example.com>, sam@example.com` |
+   | `EDITOR_EMAILS` | optional, same format |
+   | `ADMIN_PASSWORD` | first password for those accounts, 12+ characters |
+
    Do not give it a public domain: only the web service needs to reach it.
 3. **web**: *New → GitHub repo* (this repository again). It uses the root `railway.json` and `Dockerfile`. Variable:
    `API_UPSTREAM=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:${{api.PORT}}`. Then **Settings → Networking → Generate Domain**

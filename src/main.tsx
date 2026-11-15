@@ -15,7 +15,7 @@ import { localeFromPath } from '@/lib/translate'
 
 // The language is the first part of the address (/fr/trends). The router is mounted on it,
 // so every link inside the site keeps the reader in their language.
-const { base } = localeFromPath()
+const { base } = import.meta.env.VITE_APP_TARGET === 'admin' ? { base: '' } : localeFromPath()
 
 // Load today's edition from the API before the first render (the logo splash is showing).
 // If the API does not answer within three seconds, the site starts on its bundled snapshot.

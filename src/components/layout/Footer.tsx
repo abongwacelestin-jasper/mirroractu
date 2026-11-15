@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useSiteActions } from '@/lib/actions'
+import { TARGET } from '@/lib/target'
 import { ApiError, api } from '@/lib/api'
 import { useEdition } from '@/lib/edition'
 import { CATEGORIES, sectionPath } from '@/data'
@@ -73,7 +74,8 @@ export function Footer({ formRef, onSearch, onTop }: Props) {
             <li><FootLink to="/legal">Terms of use</FootLink></li>
             <li><FootLink to="/legal#credits">Picture credits</FootLink></li>
             <li><button type="button" onClick={() => window.dispatchEvent(new Event('ma:install'))} className="text-left hover:text-white">Get the app</button></li>
-            <li><FootLink to="/admin">Staff sign-in</FootLink></li>
+            {/* Development only: in production the dashboard is a separate site and is not advertised here. */}
+            {TARGET === 'all' && <li><FootLink to="/admin">Staff sign-in</FootLink></li>}
             <li><button type="button" onClick={openCookieSettings} className="text-left hover:text-white">Cookie settings</button></li>
           </Column>
         </div>

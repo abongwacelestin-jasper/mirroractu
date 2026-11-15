@@ -6,6 +6,7 @@ import { twMerge } from 'tailwind-merge'
 import { CATEGORIES, CategoryId, EDITION_DATE, storyPath } from '@/data'
 import { storyMedia } from '@/data/media'
 import { ApiError, api } from '@/lib/api'
+import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { PasswordInput, useAdmin } from './AdminApp'
 import { Avatar, Btn, DayBars, Empty, Field, Kpi, Notice, Panel, Pill, RankBars, Segmented, ago, inputClass, when } from './ui'
 
@@ -53,8 +54,8 @@ export function Overview() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link to="/admin/stories?new=1" className="rounded-full border border-signal bg-signal px-4 py-2 text-[14px] font-semibold text-ink hover:bg-signal-hover">New story</Link>
-            <Link to="/admin/wire" className="flex items-center gap-2 rounded-full border border-rule-dark px-4 py-2 text-[14px] font-semibold hover:border-white"><Radio className="size-4" /> File to the wire</Link>
+            <Link to={adminPath('stories?new=1')} className="rounded-full border border-signal bg-signal px-4 py-2 text-[14px] font-semibold text-ink hover:bg-signal-hover">New story</Link>
+            <Link to={adminPath('wire')} className="flex items-center gap-2 rounded-full border border-rule-dark px-4 py-2 text-[14px] font-semibold hover:border-white"><Radio className="size-4" /> File to the wire</Link>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-px bg-rule-dark lg:grid-cols-4">
@@ -347,7 +348,7 @@ function StoryForm({ story, isAdmin, onDone }: { story: AdminStory | null; isAdm
               <input type="checkbox" checked={f.published} onChange={(e) => set({ published: e.target.checked })} className="mt-1 size-[18px] accent-[#0e1424]" />
               <span><span className="block text-[15px] font-semibold">Published on the site</span><span className="block text-[13px] text-muted">Readers see it within a few seconds of saving. Untick to take it down without deleting it.</span></span>
             </label>
-            {story?.published && <a href={storyPath(story.id)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[13.5px] font-semibold underline decoration-signal decoration-2 underline-offset-4">View on the site <ExternalLink className="size-3.5" /></a>}
+            {story?.published && HAS_SITE_LINK && <a href={SITE_URL + storyPath(story.id)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[13.5px] font-semibold underline decoration-signal decoration-2 underline-offset-4">View on the site <ExternalLink className="size-3.5" /></a>}
           </Panel>
         </div>
       </div>

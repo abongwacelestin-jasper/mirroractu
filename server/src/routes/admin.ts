@@ -5,7 +5,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { audit, currentUser, endSession, hashPassword, login, requireUser, sameOrigin, startSession, userOf } from '../auth'
+import { audit, currentUser, endSession, hashPassword, login, requireUser, sameOrigin, startSession, throughAdminGateway, userOf } from '../auth'
 import { one, q } from '../db'
 import { slugify } from '../slug'
 import { addWire } from '../wire'
@@ -34,10 +34,15 @@ const storyIn = z.object({
 const bad = (e: z.ZodError) => ({ error: 'Some fields need attention.', fields: e.issues.map((i) => ({ field: i.path.join('.'), problem: i.message })) })
 
 export async function adminRoutes(app: FastifyInstance) {
+  // Everything in this file sits behind the admin gateway: see throughAdminGateway in auth.ts.
+  app.addHook('onRequest', async (req, reply) => {
+    if (!throughAdminGateway(req)) return reply.code(404).send({ error: 'Not found.' })
+  })
+
   /* ---------- Sign-in ---------- */
 
   app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
-    if (!sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    if (!sameOrigin(req, 'admin')) return reply.code(403).send({ error: 'Request did not come from the MirrorActu dashboard.' })
     const body = z.object({ email: z.string().max(254), password: z.string().min(1).max(200) }).safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Enter your email and password.' })
     const result = await login(body.data.email, body.data.password)

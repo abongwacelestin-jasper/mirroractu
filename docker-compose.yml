@@ -1,6 +1,8 @@
-# MirrorActu: the website, its API and its database.
+# MirrorActu: the public site, the staff dashboard, the API and the database.
 #
-#   docker compose up -d --build      start (or update) everything; the site is on http://localhost:8080
+#   docker compose up -d --build      start (or update) everything:
+#                                       public site      http://localhost:8080
+#                                       staff dashboard  http://localhost:8081   (a separate website)
 #   docker compose up -d db api       just the API and database, for `npm run dev` (which proxies /api to :4000)
 #   docker compose logs -f api        watch the API
 #   docker compose down               stop it (data is kept)
@@ -39,6 +41,9 @@ services:
       PORT: "4000"
       NODE_ENV: ${NODE_ENV:-development}
       SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:8080,http://localhost:5173}
+      # The dashboard's address, and the key only its web server knows. See server/.env.example.
+      ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:8081,http://localhost:5173}
+      ADMIN_GATEWAY_KEY: ${ADMIN_GATEWAY_KEY:-}
       # Staff accounts, created automatically on every start. See server/.env.example.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       EDITOR_EMAILS: ${EDITOR_EMAILS:-}
@@ -68,11 +73,12 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # ---------- Website ----------
+  # ---------- Public website ----------
   web:
     build:
       context: .
       args:
+        APP_TARGET: site
         VITE_ADSENSE_CLIENT: ${VITE_ADSENSE_CLIENT:-}
         VITE_ADSENSE_SLOT_LEADERBOARD: ${VITE_ADSENSE_SLOT_LEADERBOARD:-}
         VITE_ADSENSE_SLOT_MPU: ${VITE_ADSENSE_SLOT_MPU:-}
@@ -96,6 +102,32 @@ services:
       - /tmp
       # nginx writes its config here at start-up (settings are filled in from a template).
       # It must belong to the nginx user (id 101), who is not root.
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------- Staff dashboard: a separate website on its own port / address ----------
+  admin:
+    build:
+      context: .
+      args:
+        APP_TARGET: admin
+        VITE_SITE_URL: ${SITE_URL:-http://localhost:8080}
+    image: mirroractu-admin:latest
+    container_name: mirroractu-admin
+    environment:
+      API_UPSTREAM: http://api:4000
+      ADMIN_GATEWAY_KEY: ${ADMIN_GATEWAY_KEY:-}
+    depends_on:
+      - api
+    ports:
+      - "${ADMIN_PORT:-8081}:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
       - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
     cap_drop:
       - ALL

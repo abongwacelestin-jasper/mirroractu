@@ -7,6 +7,11 @@
  *   SITE_ORIGIN           public address of the website (required in production). Requests that
  *                         change data must come from here. Several may be given, comma separated.
  *   ANALYTICS_SALT        long random string that anonymises readers (required in production)
+ *   ADMIN_ORIGIN          public address of the staff dashboard, which is a separate website
+ *                         (required in production). Sign-in and dashboard changes must come from here.
+ *   ADMIN_GATEWAY_KEY     long random string shared only with the dashboard's web server (required
+ *                         in production). Sign-in and dashboard requests without it get "not found",
+ *                         so they cannot be reached through the public site or any other route.
  *
  * Staff accounts, created automatically on every start (see auth.ts → syncStaff)
  *   ADMIN_EMAILS          administrators, comma separated: "Ada Obi <ada@x.com>, sam@x.com"
@@ -62,6 +67,8 @@ export const config = {
   production,
   siteOrigins: (env.SITE_ORIGIN ?? 'http://localhost:5173,http://localhost:8080').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   analyticsSalt: env.ANALYTICS_SALT ?? '',
+  adminOrigins: (env.ADMIN_ORIGIN ?? 'http://localhost:8081,http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
+  adminGatewayKey: env.ADMIN_GATEWAY_KEY ?? '',
 
   /** Everyone who should have an account. Administrators win if an address is in both lists. */
   staff: [...staffList([env.ADMIN_EMAILS, env.ADMIN_EMAIL].filter(Boolean).join(','), 'admin'), ...staffList(env.EDITOR_EMAILS, 'editor')].filter(
@@ -84,6 +91,9 @@ export function checkConfig() {
   if (!config.databaseUrl) problems.push('DATABASE_URL is not set')
   if (config.production && !env.SITE_ORIGIN) problems.push('SITE_ORIGIN must be set in production')
   if (config.production && config.analyticsSalt.length < 16) problems.push('ANALYTICS_SALT must be set (16+ characters) in production')
+  if (config.production && !env.ADMIN_ORIGIN) problems.push('ADMIN_ORIGIN must be set in production (the address of the staff dashboard)')
+  if (config.production && config.adminGatewayKey.length < 32) problems.push('ADMIN_GATEWAY_KEY must be set (32+ characters) in production')
+  if (config.production && config.adminOrigins.some((o) => config.siteOrigins.includes(o))) problems.push('ADMIN_ORIGIN must be a different address from SITE_ORIGIN')
   if (config.staff.length && config.adminPassword.length < 12) problems.push('ADMIN_PASSWORD needs at least 12 characters when ADMIN_EMAILS or EDITOR_EMAILS is set')
   if (config.production && /^(password|changeme|admin)/i.test(config.adminPassword)) problems.push('ADMIN_PASSWORD is too easy to guess')
   if (problems.length) {

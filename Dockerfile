@@ -1,6 +1,8 @@
-# MirrorActu: build the site with Node, serve it with nginx.
+# MirrorActu: build with Node, serve with nginx. One file builds two separate websites:
 #
-#   docker build -t mirroractu .
+#   docker build -t mirroractu .                                  the public site (no dashboard in it)
+#   docker build -t mirroractu-admin --build-arg APP_TARGET=admin .   the staff dashboard
+#
 #   docker run -p 8080:8080 mirroractu      → http://localhost:8080
 #
 # The VITE_* values are read while the site is built, not when the container starts,
@@ -15,6 +17,13 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+
+# Which website to build: "site" (public) or "admin" (staff dashboard).
+ARG APP_TARGET=site
+# The public site's address, used by the dashboard for its "View the site" links.
+ARG VITE_SITE_URL=""
+ENV VITE_APP_TARGET=$APP_TARGET \
+    VITE_SITE_URL=$VITE_SITE_URL
 
 # Google advertising and geo lookup. All optional: leave empty for house adverts only.
 ARG VITE_ADSENSE_CLIENT=""
@@ -37,16 +46,18 @@ RUN npm run typecheck && npm run build
 # ---------- 2. Serve ----------
 # The unprivileged image runs nginx as a normal user on port 8080, not as root.
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS serve
+ARG APP_TARGET=site
 
 # The port to listen on. Railway and similar hosts set PORT themselves; otherwise 8080.
 # API_UPSTREAM is where /api/ requests are sent: the API service's private address.
 ENV PORT=8080 \
     API_UPSTREAM=http://api:4000 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-    NGINX_ENVSUBST_FILTER="^(PORT|API_UPSTREAM|NGINX_LOCAL_RESOLVERS)$"
+    ADMIN_GATEWAY_KEY="" \
+    NGINX_ENVSUBST_FILTER="^(PORT|API_UPSTREAM|ADMIN_GATEWAY_KEY|NGINX_LOCAL_RESOLVERS)$"
 
 # Turned into /etc/nginx/conf.d/default.conf at start-up, with ${PORT} filled in.
-COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY deploy/nginx.${APP_TARGET}.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 8080

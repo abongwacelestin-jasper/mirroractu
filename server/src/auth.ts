@@ -5,8 +5,10 @@
  *  - A session is a random 256-bit token in an httpOnly cookie; the database keeps only its
  *    SHA-256 hash, so a copy of the database cannot be used to sign in.
  *  - Five wrong passwords lock the account for fifteen minutes.
- *  - Requests that change data must come from the website itself (Origin check) and carry
- *    the session cookie, which browsers do not send on cross-site form posts (SameSite=Lax).
+ *  - Sign-in and the dashboard are only reachable through the dashboard's own web server,
+ *    which is a different address from the public site (see throughAdminGateway).
+ *  - Requests that change data must come from the dashboard's address (Origin check) and carry
+ *    the session cookie, which browsers do not send on cross-site form posts (SameSite=Strict).
  */
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -61,7 +63,7 @@ export async function startSession(reply: FastifyReply, userId: number, userAgen
   const token = randomBytes(32).toString('base64url')
   const expires = new Date(Date.now() + config.sessionDays * 86400000)
   await q('INSERT INTO sessions (token_hash, user_id, expires_at, user_agent) VALUES ($1, $2, $3, $4)', [sha256(token), userId, expires, userAgent?.slice(0, 300) ?? null])
-  reply.setCookie(COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', secure: config.production, expires })
+  reply.setCookie(COOKIE, token, { path: '/', httpOnly: true, sameSite: 'strict', secure: config.production, expires })
 }
 
 export async function endSession(req: FastifyRequest, reply: FastifyReply) {
@@ -81,18 +83,34 @@ export async function currentUser(req: FastifyRequest): Promise<User | null> {
   return row ? toUser(row) : null
 }
 
-/** True if a data-changing request came from the website itself. */
-export function sameOrigin(req: FastifyRequest) {
+/**
+ * True if a data-changing request came from the right website: the public site for reader
+ * forms, the staff dashboard for sign-in and dashboard changes. The two are different addresses.
+ */
+export function sameOrigin(req: FastifyRequest, audience: 'site' | 'admin' = 'site') {
   const origin = (req.headers.origin ?? '').replace(/\/$/, '')
-  if (origin) return config.siteOrigins.includes(origin)
+  if (origin) return (audience === 'admin' ? config.adminOrigins : config.siteOrigins).includes(origin)
   // No Origin header: allow only non-browser clients that say so explicitly.
   return req.headers['x-requested-with'] === 'mirroractu'
+}
+
+/**
+ * The gate in front of sign-in and the dashboard API. Only the dashboard's own web server knows
+ * ADMIN_GATEWAY_KEY and adds it to the requests it forwards; the public site's server strips
+ * the header and refuses these paths outright. Anything arriving without the key is answered
+ * "not found", exactly as if the route did not exist.
+ */
+export function throughAdminGateway(req: FastifyRequest) {
+  if (!config.adminGatewayKey) return !config.production
+  const given = Buffer.from(String(req.headers['x-admin-gateway-key'] ?? ''))
+  const expected = Buffer.from(config.adminGatewayKey)
+  return given.length === expected.length && timingSafeEqual(given, expected)
 }
 
 /** Route guard: signed in, optionally as an administrator. */
 export function requireUser(role?: 'admin', allowPending = false) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
-    if (req.method !== 'GET' && !sameOrigin(req)) return reply.code(403).send({ error: 'Request did not come from the MirrorActu site.' })
+    if (req.method !== 'GET' && !sameOrigin(req, 'admin')) return reply.code(403).send({ error: 'Request did not come from the MirrorActu dashboard.' })
     const user = await currentUser(req)
     if (!user) return reply.code(401).send({ error: 'Sign in to continue.' })
     // An account still on its first, shared password can do nothing until it has its own.

@@ -20,7 +20,10 @@ const OffersPage = page(() => import('@/pages/OffersPage'), 'OffersPage')
 const OfferPage = page(() => import('@/pages/OffersPage'), 'OfferPage')
 const TrendsPage = page(() => import('@/pages/TrendsPage'), 'TrendsPage')
 const SearchPage = page(() => import('@/pages/SearchPage'), 'SearchPage')
-const AdminApp = page(() => import('@/admin/AdminApp'), 'AdminApp')
+// The dashboard is compiled in only for the admin build and for local development. In the
+// public site build this is `null`, the import is removed, and none of its code is shipped.
+const AdminApp = import.meta.env.VITE_APP_TARGET !== 'site' ? page(() => import('@/admin/AdminApp'), 'AdminApp') : null
+const ADMIN_ONLY = import.meta.env.VITE_APP_TARGET === 'admin'
 const LegalPage = page(() => import('@/pages/LegalPage'), 'LegalPage')
 const NotFoundPage = page(() => import('@/pages/NotFoundPage'), 'NotFoundPage')
 
@@ -32,9 +35,23 @@ export function App({ preview = 'live' }: { preview?: PreviewState }) {
   return (
     <PreviewContext.Provider value={preview}>
       <Routes>
-        {/* The staff dashboard has its own shell: no masthead, adverts or reader popups. */}
-        <Route path="admin" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
-        <Route path="admin/:tab" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+        {/* The staff dashboard has its own shell: no masthead, adverts or reader popups.
+            Admin build: it is the whole app, at the root. Development: it sits under /admin.
+            Public site build: there is no dashboard route at all. */}
+        {AdminApp && ADMIN_ONLY && (
+          <>
+            <Route index element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+            <Route path=":tab" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+            <Route path="*" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+          </>
+        )}
+        {AdminApp && !ADMIN_ONLY && (
+          <>
+            <Route path="admin" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+            <Route path="admin/:tab" element={<Suspense fallback={null}><AdminApp /></Suspense>} />
+          </>
+        )}
+        {!ADMIN_ONLY && (
         <Route element={<Layout />}>
           <Route index element={<HomePage />} />
           <Route path="story/:storyId" element={<StoryPage />} />
@@ -52,6 +69,7 @@ export function App({ preview = 'live' }: { preview?: PreviewState }) {
           <Route path=":sectionId" element={<SectionPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
+        )}
       </Routes>
     </PreviewContext.Provider>
   )
