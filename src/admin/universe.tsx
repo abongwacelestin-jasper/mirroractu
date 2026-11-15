@@ -17,7 +17,7 @@ import { Maximize2, Pause, Play, RotateCcw } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { DetailModal, Event, Pick, TYPE, clock, countryName, describe } from './engagement'
-import { GLOBE } from './globe.generated'
+import { GLOBE, LAND_DOTS } from './globe.generated'
 import { useLive, useLiveStatus, usePresence } from './live'
 import { Btn, Notice } from './ui'
 
@@ -58,6 +58,27 @@ const SHAPES = GLOBE.map(([code, name, lon, lat, rings]) => ({
 }))
 const CENTRE = new Map(SHAPES.map((s) => [s.code, s.centre]))
 
+// The land as a field of evenly spaced dots, each remembering its country so it can light up.
+const DOT_CODES = Object.keys(LAND_DOTS)
+const DOT_COUNT = DOT_CODES.reduce((n, c) => n + LAND_DOTS[c].length / 2, 0)
+const DOTS = new Float32Array(DOT_COUNT * 3)
+const DOT_COUNTRY = new Uint16Array(DOT_COUNT)
+{
+  let n = 0
+  DOT_CODES.forEach((code, c) => {
+    const list = LAND_DOTS[code]
+    for (let i = 0; i < list.length; i += 2) {
+      DOTS.set(fromLonLat(list[i], list[i + 1]), n * 3)
+      DOT_COUNTRY[n++] = c
+    }
+  })
+}
+
+// Lines of latitude and longitude, every 30 degrees: they give the ball its curve.
+const GRID: Float32Array[] = []
+for (let lon = -180; lon < 180; lon += 30) GRID.push(Float32Array.from(Array.from({ length: 61 }, (_, i) => fromLonLat(lon, -90 + i * 3)).flat()))
+for (let lat = -60; lat <= 60; lat += 30) GRID.push(Float32Array.from(Array.from({ length: 121 }, (_, i) => fromLonLat(-180 + i * 3, lat)).flat()))
+
 type Particle = { from: V; to: V; kind: Kind; t: number; speed: number; lift: number; outer: boolean; code: string | null }
 type Pulse = { at: V; kind: Kind; age: number }
 
@@ -80,7 +101,7 @@ export function Universe() {
   const reduce = useMemo(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches, [])
 
   // Everything the animation needs between frames lives here, outside React's renders.
-  const world = useRef({ yaw: -0.45, pitch: 0.28, zoom: 1, drag: null as null | { x: number; y: number; yaw: number; pitch: number; moved: boolean }, particles: [] as Particle[], pulses: [] as Pulse[], heat: new Map<string, number>(), arrivals: 0, lastLive: 0, serverGlow: 0, paused: false, hover: null as string | null })
+  const world = useRef({ yaw: -0.45, pitch: 0.28, zoom: 1, drag: null as null | { x: number; y: number; yaw: number; pitch: number; moved: boolean }, particles: [] as Particle[], pulses: [] as Pulse[], heat: new Map<string, number>(), arrivals: 0, lastLive: 0, serverGlow: 0, paused: false, hover: null as string | null, spin: 0, tilt: 0, rings: [] as number[] })
   world.current.paused = paused
 
   useEffect(() => {
@@ -145,7 +166,7 @@ export function Universe() {
     let height = 0
     let raf = 0
     let last = performance.now()
-    const stars = Array.from({ length: 220 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.2 + 0.2, a: Math.random() * 0.6 + 0.15, tw: Math.random() * 6 }))
+    const stars = Array.from({ length: 320 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.2 + 0.2, a: Math.random() * 0.6 + 0.15, tw: Math.random() * 6 }))
 
     const resize = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -163,7 +184,15 @@ export function Universe() {
       const w = world.current
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      if (!w.paused && !w.drag && !reduce) w.yaw += dt * 0.09
+      if (!w.drag) {
+        // After a drag the globe keeps turning for a moment and eases back to its own slow spin.
+        w.yaw += w.spin * dt
+        w.pitch = Math.max(-1.2, Math.min(1.2, w.pitch + w.tilt * dt))
+        w.spin *= Math.pow(0.04, dt)
+        w.tilt *= Math.pow(0.04, dt)
+        // One full turn takes about seven minutes: slow enough to read, never still.
+        if (!w.paused && !reduce) w.yaw += dt * 0.015
+      }
       const R = Math.min(width, height) * 0.38 * w.zoom
       const cx = width / 2
       const cy = height / 2 + R * 0.04
@@ -177,33 +206,64 @@ export function Universe() {
       /** Behind the globe? (Facing away, and inside its outline as we see it.) */
       const hidden = (p: V) => p[2] < 0 && Math.hypot(p[0] - cx, p[1] - cy) < R * 0.995
 
-      // Space
-      ctx.fillStyle = '#070b16'
+      // Space: deep blue-black, two faint clouds of colour, and stars that drift as the globe turns.
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.fillStyle = '#05080f'
       ctx.fillRect(0, 0, width, height)
+      for (const [nx, ny, nr, colour] of [[0.16, 0.2, 0.55, 'rgba(64,96,190,0.16)'], [0.88, 0.82, 0.5, 'rgba(255,90,54,0.09)'], [0.78, 0.12, 0.35, 'rgba(79,209,165,0.05)']] as [number, number, number, string][]) {
+        const cloud = ctx.createRadialGradient(nx * width, ny * height, 0, nx * width, ny * height, nr * Math.max(width, height))
+        cloud.addColorStop(0, colour)
+        cloud.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = cloud
+        ctx.fillRect(0, 0, width, height)
+      }
       for (const s of stars) {
-        ctx.globalAlpha = s.a * (reduce ? 1 : 0.7 + 0.3 * Math.sin(now / 900 + s.tw))
-        ctx.fillStyle = '#c9d1dc'
+        ctx.globalAlpha = s.a * (reduce ? 1 : 0.65 + 0.35 * Math.sin(now / 900 + s.tw))
+        ctx.fillStyle = s.r > 1.1 ? '#ffffff' : '#c9d1dc'
         ctx.beginPath()
-        ctx.arc(((s.x * width - w.yaw * 14) % width + width) % width, s.y * height, s.r, 0, Math.PI * 2)
+        ctx.arc(((s.x * width - w.yaw * (8 + s.r * 14)) % width + width) % width, s.y * height, s.r, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.globalAlpha = 1
 
-      // Atmosphere and ocean
-      const glow = ctx.createRadialGradient(cx, cy, R * 0.96, cx, cy, R * 1.22)
-      glow.addColorStop(0, 'rgba(127,168,255,0.28)')
-      glow.addColorStop(1, 'rgba(127,168,255,0)')
-      ctx.fillStyle = glow
-      ctx.beginPath()
-      ctx.arc(cx, cy, R * 1.22, 0, Math.PI * 2)
-      ctx.fill()
-      const sea = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R)
-      sea.addColorStop(0, '#1b2a4a')
-      sea.addColorStop(1, '#0b1224')
+      // Atmosphere: a wide soft halo, then a tight bright one hugging the edge.
+      for (const [inner, outer, a] of [[0.98, 1.42, 0.2], [0.99, 1.1, 0.45]] as [number, number, number][]) {
+        const glow = ctx.createRadialGradient(cx, cy, R * inner, cx, cy, R * outer)
+        glow.addColorStop(0, `rgba(110,160,255,${a})`)
+        glow.addColorStop(1, 'rgba(110,160,255,0)')
+        ctx.fillStyle = glow
+        ctx.beginPath()
+        ctx.arc(cx, cy, R * outer, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      // Ocean: lit from the upper left, falling to near black on the far limb.
+      const sea = ctx.createRadialGradient(cx - R * 0.42, cy - R * 0.46, R * 0.05, cx, cy, R * 1.02)
+      sea.addColorStop(0, '#1d3160')
+      sea.addColorStop(0.55, '#0e1a36')
+      sea.addColorStop(1, '#060b18')
       ctx.fillStyle = sea
       ctx.beginPath()
       ctx.arc(cx, cy, R, 0, Math.PI * 2)
       ctx.fill()
+
+      // Latitude and longitude, faint, on the side facing us.
+      ctx.lineWidth = 0.5
+      ctx.strokeStyle = 'rgba(140,170,230,0.10)'
+      for (const line of GRID) {
+        ctx.beginPath()
+        let pen = false
+        for (let i = 0; i < line.length; i += 3) {
+          const p = project(line[i], line[i + 1], line[i + 2])
+          if (p[2] <= 0) {
+            pen = false
+            continue
+          }
+          if (pen) ctx.lineTo(p[0], p[1])
+          else ctx.moveTo(p[0], p[1])
+          pen = true
+        }
+        ctx.stroke()
+      }
 
       // Countries: clipped to the globe, the far side folded onto the rim so shapes stay closed.
       ctx.save()
@@ -232,21 +292,76 @@ export function Universe() {
           if (!front) continue
           ctx.closePath()
           // Cool blue-grey at rest, warming towards the signal colour as requests arrive.
-          ctx.fillStyle = heat > 0.02 ? `rgb(${Math.round(38 + 217 * heat)},${Math.round(52 + 38 * heat)},${Math.round(84 - 30 * heat)})` : shape.code === w.hover ? '#34466e' : '#26345a'
+          // Land is a dark plate under the dots; a busy country glows through it.
+          ctx.fillStyle = heat > 0.02 ? `rgba(255,${Math.round(96 + 40 * heat)},54,${0.07 + heat * 0.2})` : shape.code === w.hover ? 'rgba(120,150,220,0.22)' : 'rgba(70,96,160,0.13)'
           ctx.fill()
-          ctx.strokeStyle = 'rgba(174,184,198,0.28)'
+          ctx.strokeStyle = heat > 0.02 ? `rgba(255,150,120,${0.35 + heat * 0.5})` : 'rgba(150,175,230,0.22)'
           ctx.stroke()
         }
       }
       ctx.restore()
-      // A soft shadow on the night side gives the ball its roundness.
-      const shade = ctx.createRadialGradient(cx - R * 0.45, cy - R * 0.5, R * 0.2, cx, cy, R * 1.02)
+      // The land itself: thousands of dots, larger and brighter towards the middle of the disc,
+      // fading at the edge as the surface turns away. Dots of a busy country burn warm.
+      const heatOf = DOT_CODES.map((c) => w.heat.get(c) ?? 0)
+      const buckets: number[][] = [[], [], [], []]
+      const warm: [number, number, number, number][] = []
+      for (let i = 0; i < DOT_COUNT; i++) {
+        const p = project(DOTS[i * 3], DOTS[i * 3 + 1], DOTS[i * 3 + 2])
+        if (p[2] <= 0.04) continue
+        const h = heatOf[DOT_COUNTRY[i]]
+        if (h > 0.03) warm.push([p[0], p[1], p[2], h])
+        else buckets[Math.min(3, Math.floor(p[2] * 4))].push(p[0], p[1])
+      }
+      const dotR = Math.max(0.7, R / 300)
+      buckets.forEach((list, b) => {
+        ctx.fillStyle = `rgba(158,186,240,${0.22 + b * 0.19})`
+        const r = dotR * (0.6 + b * 0.2)
+        // Below about two pixels a square reads as a dot and is many times cheaper to draw.
+        if (r < 1.3) for (let i = 0; i < list.length; i += 2) ctx.fillRect(list[i] - r, list[i + 1] - r, r * 2, r * 2)
+        else {
+          ctx.beginPath()
+          for (let i = 0; i < list.length; i += 2) {
+            ctx.moveTo(list[i] + r, list[i + 1])
+            ctx.arc(list[i], list[i + 1], r, 0, Math.PI * 2)
+          }
+          ctx.fill()
+        }
+      })
+      ctx.globalCompositeOperation = 'lighter'
+      for (const [x, y, z, h] of warm) {
+        ctx.fillStyle = `rgba(255,${Math.round(120 + 110 * h)},${Math.round(70 + 120 * h)},${(0.5 + h * 0.5) * (0.35 + z * 0.65)})`
+        ctx.beginPath()
+        ctx.arc(x, y, dotR * (0.9 + z * 0.5 + h * 0.9), 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalCompositeOperation = 'source-over'
+
+      // Light and shadow: a soft highlight where the light falls, darkness on the far limb, and
+      // a thin bright rim where the atmosphere catches it.
+      const shade = ctx.createRadialGradient(cx - R * 0.45, cy - R * 0.5, R * 0.25, cx, cy, R * 1.02)
       shade.addColorStop(0, 'rgba(0,0,0,0)')
-      shade.addColorStop(1, 'rgba(3,6,14,0.55)')
+      shade.addColorStop(0.7, 'rgba(2,5,12,0.28)')
+      shade.addColorStop(1, 'rgba(2,5,12,0.72)')
       ctx.fillStyle = shade
       ctx.beginPath()
       ctx.arc(cx, cy, R, 0, Math.PI * 2)
       ctx.fill()
+      const shine = ctx.createRadialGradient(cx - R * 0.5, cy - R * 0.55, 0, cx - R * 0.5, cy - R * 0.55, R * 0.75)
+      shine.addColorStop(0, 'rgba(190,215,255,0.13)')
+      shine.addColorStop(1, 'rgba(190,215,255,0)')
+      ctx.fillStyle = shine
+      ctx.beginPath()
+      ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.fill()
+      const rim = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R)
+      rim.addColorStop(0, 'rgba(170,205,255,0.85)')
+      rim.addColorStop(0.5, 'rgba(120,165,255,0.25)')
+      rim.addColorStop(1, 'rgba(120,165,255,0.05)')
+      ctx.strokeStyle = rim
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.stroke()
 
       // Pulses where requests start
       w.pulses = w.pulses.filter((p) => (p.age += dt) < 1.4)
@@ -266,7 +381,16 @@ export function Universe() {
       // The server
       const sv = project(server[0], server[1], server[2])
       w.serverGlow = Math.max(0, w.serverGlow - dt * 1.6)
+      // Each arrival sends a ring out from the server.
+      w.rings = w.rings.map((a) => a + dt).filter((a) => a < 1.1)
       if (sv[2] > 0) {
+        for (const age of w.rings) {
+          ctx.strokeStyle = `rgba(255,255,255,${(1 - age / 1.1) * 0.55})`
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.arc(sv[0], sv[1], 6 + (age / 1.1) * 34, 0, Math.PI * 2)
+          ctx.stroke()
+        }
         const beat = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(now / 420)
         const halo = ctx.createRadialGradient(sv[0], sv[1], 0, sv[0], sv[1], 22 + w.serverGlow * 22)
         halo.addColorStop(0, `rgba(255,255,255,${0.55 + w.serverGlow * 0.4})`)
@@ -291,12 +415,15 @@ export function Universe() {
 
       // Requests in flight: a bright head and a fading tail along the arc.
       ctx.lineCap = 'round'
+      // Light adds up where requests cross, the way it would in the dark.
+      ctx.globalCompositeOperation = 'lighter'
       const alive: Particle[] = []
       for (const p of w.particles) {
         if (!w.paused) p.t += dt * p.speed
         if (p.t >= 1) {
           w.serverGlow = Math.min(1, w.serverGlow + 0.35)
           w.arrivals++
+          if (w.rings.length < 8) w.rings.push(0)
           continue
         }
         alive.push(p)
@@ -306,14 +433,32 @@ export function Universe() {
           const h = 1 + p.lift * Math.sin(Math.PI * t) + (p.outer ? 0.55 * (1 - t) : 0)
           return project(g[0] * h, g[1] * h, g[2] * h)
         }
-        let prev = at(Math.max(0, p.t - 0.16))
-        for (let i = 1; i <= 8; i++) {
-          const t = Math.max(0, p.t - 0.16 + (0.16 * i) / 8)
+        // The whole route, very faintly, so the eye can follow where it is going.
+        ctx.strokeStyle = COLOR[p.kind]
+        ctx.globalAlpha = 0.07
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        let pen = false
+        for (let i = 0; i <= 24; i++) {
+          const q = at(i / 24)
+          if (hidden(q)) {
+            pen = false
+            continue
+          }
+          if (pen) ctx.lineTo(q[0], q[1])
+          else ctx.moveTo(q[0], q[1])
+          pen = true
+        }
+        ctx.stroke()
+        const TAIL = 0.24
+        let prev = at(Math.max(0, p.t - TAIL))
+        for (let i = 1; i <= 12; i++) {
+          const t = Math.max(0, p.t - TAIL + (TAIL * i) / 12)
           const cur = at(t)
           if (!hidden(prev) && !hidden(cur)) {
             ctx.strokeStyle = COLOR[p.kind]
-            ctx.globalAlpha = (i / 8) * 0.85
-            ctx.lineWidth = 0.6 + (i / 8) * 1.8
+            ctx.globalAlpha = Math.pow(i / 12, 1.6) * 0.9
+            ctx.lineWidth = 0.5 + (i / 12) * 2.2
             ctx.beginPath()
             ctx.moveTo(prev[0], prev[1])
             ctx.lineTo(cur[0], cur[1])
@@ -327,26 +472,38 @@ export function Universe() {
           ctx.beginPath()
           ctx.arc(prev[0], prev[1], 1.8, 0, Math.PI * 2)
           ctx.fill()
-          ctx.fillStyle = COLOR[p.kind]
-          ctx.globalAlpha = 0.35
+          const head = ctx.createRadialGradient(prev[0], prev[1], 0, prev[0], prev[1], 9)
+          head.addColorStop(0, COLOR[p.kind])
+          head.addColorStop(1, 'rgba(0,0,0,0)')
+          ctx.fillStyle = head
+          ctx.globalAlpha = 0.75
           ctx.beginPath()
-          ctx.arc(prev[0], prev[1], 5, 0, Math.PI * 2)
+          ctx.arc(prev[0], prev[1], 9, 0, Math.PI * 2)
           ctx.fill()
         }
       }
       ctx.globalAlpha = 1
+      ctx.globalCompositeOperation = 'source-over'
       w.particles = alive
 
-      // Names of the busiest countries, on the side facing us.
+      // Names of the busiest countries, on the side facing us: the busiest first, and a name is
+      // left out if it would sit on top of another or on the server's label.
       ctx.font = '600 11.5px ui-sans-serif, system-ui, sans-serif'
-      for (const [code, v] of w.heat) {
-        if (v > 0.2) {
-          const c = CENTRE.get(code)
-          if (!c) continue
-          const s = project(c[0], c[1], c[2])
-          if (s[2] > 0.15) {
-            ctx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.35 + v)})`
-            ctx.fillText(countryName(code), s[0] + 7, s[1] + 4)
+      const placed: [number, number, number, number][] = sv[2] > 0 ? [[sv[0] - 12, sv[1] - 26, 170, 34]] : []
+      for (const [code, v] of [...w.heat.entries()].sort((a, b) => b[1] - a[1])) {
+        const c = CENTRE.get(code)
+        if (v > 0.2 && c) {
+          const at = project(c[0], c[1], c[2])
+          if (at[2] > 0.15) {
+            const name = countryName(code)
+            const box: [number, number, number, number] = [at[0] + 5, at[1] - 9, ctx.measureText(name).width + 6, 16]
+            if (!placed.some((b) => box[0] < b[0] + b[2] && box[0] + box[2] > b[0] && box[1] < b[1] + b[3] && box[1] + box[3] > b[1])) {
+              placed.push(box)
+              ctx.fillStyle = 'rgba(5,8,15,0.55)'
+              ctx.fillRect(box[0] - 1, box[1], box[2], box[3])
+              ctx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.45 + v)})`
+              ctx.fillText(name, at[0] + 7, at[1] + 4)
+            }
           }
         }
         // Countries cool down over about twenty seconds.
@@ -397,8 +554,13 @@ export function Universe() {
     const dx = e.clientX - w.drag.x
     const dy = e.clientY - w.drag.y
     if (Math.abs(dx) + Math.abs(dy) > 4) w.drag.moved = true
-    w.yaw = w.drag.yaw + dx * 0.006
-    w.pitch = Math.max(-1.2, Math.min(1.2, w.drag.pitch + dy * 0.006))
+    const yaw = w.drag.yaw + dx * 0.006
+    const pitch = Math.max(-1.2, Math.min(1.2, w.drag.pitch + dy * 0.006))
+    // How fast it was moving when let go, for the glide afterwards.
+    w.spin = (yaw - w.yaw) * 60 * 0.5 + w.spin * 0.5
+    w.tilt = (pitch - w.pitch) * 60 * 0.5 + w.tilt * 0.5
+    w.yaw = yaw
+    w.pitch = pitch
   }
   const onUp = (e: React.PointerEvent) => {
     const w = world.current
