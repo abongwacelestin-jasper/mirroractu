@@ -167,7 +167,7 @@ export async function subscribe(email: string, source: string): Promise<string> 
   if (!/^\S+@\S+\.\S+$/.test(email.trim())) return 'Enter an email address such as name@example.com.'
   try {
     await api('/subscribe', { body: { email: email.trim(), source, country: storedCountry(), lang: document.documentElement.lang || 'en' } })
-    return 'Almost done. We have sent a confirmation email: open it and press “Confirm my address”. It can take a minute, and may be in your spam folder.'
+    return 'Check your inbox. If this address is new we have sent a confirmation email: open it and press “Confirm my address”. If you were already subscribed, we have emailed you to say so. It can take a minute, and may be in your spam folder.'
   } catch (e) {
     return e instanceof ApiError ? e.message : 'Something went wrong. Try again.'
   }

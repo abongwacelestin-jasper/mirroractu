@@ -32,6 +32,7 @@ import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire 
 export type User = { id: number; email: string; name: string; role: 'admin' | 'editor'; mustChangePassword?: boolean }
 export type Correction = { id: number; story_title: string | null; message: string; email: string | null; status: string; note: string | null; created_at: string; handled_by_name: string | null }
 export type OverviewData = {
+  mail?: boolean
   counts: Record<string, number>
   days: { day: string; views: number; readers: number }[]
   topStories: { id: string; headline: string; views: number; readers: number }[]
@@ -335,7 +336,7 @@ function NowRail() {
   const services: [string, string, boolean][] = [
     ['API and database', overview ? 'Answering' : 'Checking…', !!overview],
     ['Live wire stream', status === 'live' ? (source === 'api' ? 'Streaming' : 'Simulated') : 'Connecting…', status === 'live' && source === 'api'],
-    ['Email service', 'Not connected', false],
+    ['Email service', !overview ? 'Checking…' : overview.mail ? 'Connected' : 'Not connected', !!overview?.mail],
   ]
 
   return (

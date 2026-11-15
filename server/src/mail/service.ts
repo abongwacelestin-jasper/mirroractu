@@ -57,9 +57,15 @@ type Subscriber = { id: number; email: string; status: string; token: string; co
  */
 export async function requestSubscription(email: string, o: { source?: string; country?: string | null; lang?: string }) {
   const existing = await one<Subscriber>('SELECT id, email, status, token, country, confirm_sent_at FROM subscribers WHERE email = $1', [email])
-  if (existing?.status === 'confirmed') return
-  // At most one confirmation email every ten minutes to the same address.
-  if (existing?.confirm_sent_at && Date.now() - new Date(existing.confirm_sent_at).getTime() < 10 * 60000) return
+  // At most one email every three minutes to the same address, whatever its state.
+  if (existing?.confirm_sent_at && Date.now() - new Date(existing.confirm_sent_at).getTime() < 3 * 60000) return
+  if (existing?.status === 'confirmed') {
+    // Already on the list. Say so by email rather than on the page, so the form cannot be used
+    // to find out who subscribes, and the reader is not left waiting for a confirmation.
+    await q('UPDATE subscribers SET confirm_sent_at = now() WHERE id = $1', [existing.id])
+    sendLater({ to: email, kind: 'subscribe.already', mail: T.alreadySubscribed(site(), { unsubscribeUrl: unsubscribeLink(existing.token) }), headers: listHeaders(existing.token) })
+    return
+  }
   const token = newToken()
   if (existing) await q("UPDATE subscribers SET status = 'pending', token = $2, confirm_sent_at = now(), country = coalesce($3, country), lang = coalesce($4, lang) WHERE id = $1", [existing.id, token, o.country ?? null, o.lang ?? null])
   else await q('INSERT INTO subscribers (email, source, token, country, lang, confirm_sent_at) VALUES ($1, $2, $3, $4, $5, now())', [email, o.source ?? null, token, o.country ?? null, o.lang ?? null])
@@ -151,6 +157,7 @@ export const TEMPLATES = [
   ['newsletter', 'The morning email', 'Sent from this page to every confirmed subscriber'],
   ['subscribe.confirm', 'Confirm your address', 'To a reader, the moment they sign up'],
   ['subscribe.welcome', 'Welcome', 'To a reader, once they confirm'],
+  ['subscribe.already', 'Already subscribed', 'To a reader who signs up again with a confirmed address'],
   ['correction.received', 'Correction report received', 'To a reader who left an address with a report'],
   ['correction.corrected', 'Correction: story corrected', 'To that reader, when an editor marks it Corrected'],
   ['correction.no_change', 'Correction: no change', 'To that reader, when an editor marks it No change needed'],
@@ -175,6 +182,8 @@ export async function sample(kind: TemplateId, who: { name: string }, assets?: s
       return buildEdition({ subject: `MirrorActu morning: ${storyTitle}`, intro: 'Good morning. Here is what is confirmed, what is still open, and why it matters today.', storyIds: stories.map((x) => x.id) }, null, unsub, assets)
     case 'subscribe.confirm':
       return T.confirmSubscription(s, confirmLink('sample-token'))
+    case 'subscribe.already':
+      return T.alreadySubscribed(s, { unsubscribeUrl: unsub })
     case 'subscribe.welcome':
       return T.welcome(s, { unsubscribeUrl: unsub, stories: stories.slice(0, 3) })
     case 'correction.received':

@@ -86,6 +86,9 @@ function staffList(value: string | undefined, role: StaffEntry['role']): StaffEn
     .filter((s) => /^\S+@\S+\.\S+$/.test(s.email))
 }
 
+/** name@domain.tld, or "Name <name@domain.tld>" */
+const validEmail = (v: string | undefined) => /^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test((v?.match(/<([^>]+)>/)?.[1] ?? v ?? '').trim())
+
 const production = env.NODE_ENV === 'production'
 
 export const config = {
@@ -100,7 +103,10 @@ export const config = {
   /** Resend's shared test sender only delivers to the Resend account's own address. */
   mailFrom: env.MAIL_FROM || 'MirrorActu <onboarding@resend.dev>',
   mailFromSet: !!env.MAIL_FROM,
-  mailReplyTo: env.MAIL_REPLY_TO ?? '',
+  // A reply address that is not a real address makes Resend refuse every email, so one that
+  // does not look right is left out (replies then go to the sender) and reported instead.
+  mailReplyTo: validEmail(env.MAIL_REPLY_TO) ? env.MAIL_REPLY_TO!.trim() : '',
+  mailReplyToRejected: env.MAIL_REPLY_TO && !validEmail(env.MAIL_REPLY_TO) ? env.MAIL_REPLY_TO.trim() : '',
   mailNewsroomTo: (env.MAIL_NEWSROOM_TO ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^\S+@\S+\.\S+$/.test(s)),
   mailPostalAddress: (env.MAIL_POSTAL_ADDRESS ?? '').trim(),
   resendWebhookSecret: env.RESEND_WEBHOOK_SECRET ?? '',
@@ -139,6 +145,8 @@ export function checkConfig() {
   if (config.staff.length && config.adminPassword.length < 12) problems.push('ADMIN_PASSWORD needs at least 12 characters when ADMIN_EMAILS or EDITOR_EMAILS is set')
   if (config.production && /^(password|changeme|admin)/i.test(config.adminPassword)) problems.push('ADMIN_PASSWORD is too easy to guess')
   if (config.production && config.resendApiKey && !env.MAIL_FROM) console.warn('MAIL_FROM is not set: email is going out from Resend\'s test sender, which only reaches your own Resend address.')
+  if (config.mailReplyToRejected) console.warn(`MAIL_REPLY_TO ("${config.mailReplyToRejected}") is not a valid email address and is being ignored. Replies will go to MAIL_FROM.`)
+  if (config.resendApiKey && env.MAIL_FROM && !validEmail(env.MAIL_FROM)) console.warn(`MAIL_FROM ("${env.MAIL_FROM}") does not contain a valid email address. Resend will refuse to send.`)
   if (problems.length) {
     console.error('Cannot start:\n - ' + problems.join('\n - '))
     process.exit(1)

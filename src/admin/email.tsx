@@ -15,6 +15,7 @@ type MailInfo = {
   from: string
   fromIsTestSender: boolean
   replyTo: string | null
+  replyToRejected?: string | null
   postalAddress: string | null
   webhook: boolean
   counts: { confirmed: number; pending: number; never_asked: number; sent_week: number; failed_week: number }
@@ -117,6 +118,7 @@ function Status({ info }: { info: MailInfo }) {
   return (
     <div className="grid gap-2">
       <Notice kind="ok"><b>Connected to Resend.</b> Sending as <b>{info.from}</b>{info.replyTo ? <>, replies go to <b>{info.replyTo}</b></> : null}.</Notice>
+      {info.replyToRejected && <Notice kind="error"><b><code>MAIL_REPLY_TO</code> is not a valid email address</b> (it is set to “{info.replyToRejected}”). It is being ignored, so replies go to the sender. Set it to a real mailbox such as <code>newsroom@yourdomain.com</code>, or remove it.</Notice>}
       {info.fromIsTestSender && <Notice kind="error"><b><code>MAIL_FROM</code> is not set.</b> Email is going out from Resend’s test sender, which only reaches the address your Resend account was opened with. Verify your domain in Resend and set <code>MAIL_FROM</code>, for example <code>MirrorActu &lt;news@yourdomain&gt;</code>.</Notice>}
       {!info.postalAddress && <Notice>No postal address is set. Anti-spam law in several countries (the US CAN-SPAM Act among them) requires the publisher’s postal address in every newsletter. Set <code>MAIL_POSTAL_ADDRESS</code> on the <code>api</code> service before sending to readers.</Notice>}
       {!info.webhook && <Notice>Bounces and spam complaints are not reported back yet. Add a webhook in Resend pointing at <code>/api/v1/hooks/resend</code> on the public site and set <code>RESEND_WEBHOOK_SECRET</code>, so dead and unwilling addresses stop receiving email.</Notice>}
@@ -285,7 +287,7 @@ function Templates({ info, reload }: { info: MailInfo; reload: () => void }) {
 /* ---------- What went out ---------- */
 
 const KIND: Record<string, string> = Object.fromEntries([
-  ['newsletter', 'Morning email'], ['subscribe.confirm', 'Confirm address'], ['subscribe.welcome', 'Welcome'], ['correction.received', 'Correction received'],
+  ['newsletter', 'Morning email'], ['subscribe.confirm', 'Confirm address'], ['subscribe.welcome', 'Welcome'], ['subscribe.already', 'Already subscribed'], ['correction.received', 'Correction received'],
   ['correction.corrected', 'Correction: corrected'], ['correction.no_change', 'Correction: no change'], ['enquiry.received', 'Enquiry received'],
   ['staff.correction', 'Newsroom: correction'], ['staff.enquiry', 'Newsroom: enquiry'], ['staff.welcome', 'Account created'], ['staff.password', 'Password changed'],
 ])

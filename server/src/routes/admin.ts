@@ -112,7 +112,7 @@ export async function adminRoutes(app: FastifyInstance) {
         WHERE e.type = 'view' AND e.at > now() - interval '7 days' GROUP BY e.story_id, s.data ORDER BY readers DESC, views DESC LIMIT 8`)
       const by = (col: 'country' | 'lang') => q(`SELECT coalesce(${col}, 'unknown') AS key, count(DISTINCT visitor) AS readers FROM events WHERE at > now() - interval '7 days' GROUP BY 1 ORDER BY readers DESC LIMIT 8`)
       const num = (r: any) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, /^\d+$/.test(String(v)) ? Number(v) : v]))
-      return { counts: num(counts), days: days.map(num), topStories: top.map(num), countries: (await by('country')).map(num), languages: (await by('lang')).map(num), trends: (await globalTrends()).slice(0, 10), activeCountries: await activeCountries() }
+      return { counts: num(counts), days: days.map(num), topStories: top.map(num), countries: (await by('country')).map(num), languages: (await by('lang')).map(num), trends: (await globalTrends()).slice(0, 10), activeCountries: await activeCountries(), mail: mailConfigured() }
     })
 
     /**
@@ -301,6 +301,7 @@ export async function adminRoutes(app: FastifyInstance) {
         from: config.mailFrom,
         fromIsTestSender: !config.mailFromSet,
         replyTo: config.mailReplyTo || null,
+        replyToRejected: config.mailReplyToRejected || null,
         postalAddress: config.mailPostalAddress || null,
         webhook: !!config.resendWebhookSecret,
         counts: Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, Number(v)])),

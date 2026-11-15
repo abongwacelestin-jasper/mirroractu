@@ -166,6 +166,31 @@ export function confirmSubscription(s: Site, confirmUrl: string): Mail {
   }
 }
 
+/** Someone entered an address that is already confirmed. Told by email, so the form itself gives nothing away. */
+export function alreadySubscribed(s: Site, o: { unsubscribeUrl: string }): Mail {
+  const why = 'You are getting this because this address was entered again in the sign-up form on MirrorActu. It was already subscribed, so nothing has changed.'
+  return {
+    subject: 'You are already getting the MirrorActu morning email',
+    html: frame({
+      site: s,
+      preheader: 'Nothing to confirm: this address is already on the list.',
+      why,
+      footerLinks: [['Unsubscribe', o.unsubscribeUrl]],
+      body:
+        kicker('Already subscribed') +
+        h1('You are already on the list.') +
+        p('Someone, probably you, entered this address in our sign-up form again. It was already confirmed, so there is nothing more to do: the morning email keeps coming as before.') +
+        facts([
+          ['Not seeing it?', 'Look in your spam or promotions folder, and move one edition to your inbox. That teaches your mail program where it belongs.'],
+          ['Want to stop?', `<a href="${esc(o.unsubscribeUrl)}" style="color:${C.ink};font-weight:700;">Unsubscribe here</a>, in one tap.`],
+        ]) +
+        button(s.site, 'Open MirrorActu') +
+        small('If this was not you, you can ignore this email. Nobody can change your subscription without the links in emails sent to this address.'),
+    }),
+    text: plain(['You are already on the list.', '', 'This address was entered in our sign-up form again. It was already confirmed, so there is nothing more to do: the morning email keeps coming as before.', '', 'Not seeing it? Look in your spam or promotions folder and move one edition to your inbox.', `Want to stop? ${o.unsubscribeUrl}`], why, [['Unsubscribe', o.unsubscribeUrl]]),
+  }
+}
+
 export type StoryLine = { h: string; st: string; url: string; section: string }
 
 export function welcome(s: Site, o: { unsubscribeUrl: string; stories: StoryLine[] }): Mail {
