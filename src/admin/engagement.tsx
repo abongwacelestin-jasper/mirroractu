@@ -5,6 +5,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+import { adminPath } from '@/lib/target'
 
 import { ApiError, api } from '@/lib/api'
 import { AFRICA_SHAPES, AFRICA_VIEW, MapShape, WORLD_SHAPES, WORLD_VIEW } from './maps.generated'
@@ -15,6 +18,8 @@ type Totals = { pages: number; readers: number; clicks: number; searches: number
 type CountryRow = { code: string; requests: number; pages: number; readers: number }
 type Data = {
   days: 1 | 7 | 30
+  devices: Record<'device' | 'os' | 'browser', { key: string; n: number; readers: number }[]>
+  time: { median: number | null; visits: number; pages: { path: string; median: number; visits: number }[]; countries: { code: string; median: number; visits: number }[] }
   totals: Totals
   previous: Totals
   series: { t: string; n: number }[]
@@ -28,14 +33,16 @@ type Data = {
 }
 
 const fmt = (n: number) => n.toLocaleString('en')
+/** 75 → "1m 15s" */
+const secs = (n: number) => (n < 60 ? `${n}s` : `${Math.floor(n / 60)}m ${String(n % 60).padStart(2, '0')}s`)
 const PERIOD = { 1: '24 hours', 7: '7 days', 30: '30 days' } as const
 /** "+12% on the 7 days before", in words rather than arrows. */
 const change = (now: number, before: number, days: 1 | 7 | 30) => (before === 0 ? (now === 0 ? `No activity in ${PERIOD[days]}` : `New in these ${PERIOD[days]}`) : `${now >= before ? '+' : '−'}${Math.abs(Math.round(((now - before) / before) * 100))}% on the ${PERIOD[days]} before`)
 
 /* ---------- Detail: one country, page, site, click, search or stretch of time ---------- */
 
-export type Pick = { by: 'country' | 'page' | 'ref' | 'click' | 'search' | 'time' | 'type'; value: string; title: string }
-type Event = { at: string; type: 'page' | 'view' | 'click' | 'search'; path: string | null; label: string | null; ref: string | null; value: number | null; country: string | null; lang: string | null }
+export type Pick = { by: 'country' | 'page' | 'ref' | 'click' | 'search' | 'time' | 'type' | 'device' | 'os' | 'browser'; value: string; title: string }
+export type Event = { at: string; type: 'page' | 'view' | 'click' | 'search'; path: string | null; label: string | null; ref: string | null; value: number | null; country: string | null; lang: string | null; device?: string | null; os?: string | null; browser?: string | null; visit?: string | null }
 type Detail = {
   summary: { requests: number; readers: number; pages: number; views: number; clicks: number; searches: number; first: string | null; last: string | null }
   hours: { hour: number; n: number }[]
@@ -44,20 +51,21 @@ type Detail = {
   countries: { key: string; n: number }[]
   referrers: { key: string; n: number }[]
   languages: { key: string; n: number }[]
+  devices: { key: string; n: number }[]
   labels: { key: string; n: number; type: 'click' | 'search' }[]
   events: Event[]
   more: boolean
 }
 
-const TYPE: Record<Event['type'], [string, 'ink' | 'neutral' | 'signal' | 'warn']> = { page: ['Page', 'neutral'], view: ['Story', 'ink'], click: ['Click', 'signal'], search: ['Search', 'warn'] }
-const KIND: Record<Pick['by'], string> = { country: 'Country', page: 'Page', ref: 'Arrived from', click: 'Click', search: 'Search', time: 'Time', type: 'Kind of request' }
+export const TYPE: Record<Event['type'], [string, 'ink' | 'neutral' | 'signal' | 'warn']> = { page: ['Page', 'neutral'], view: ['Story', 'ink'], click: ['Click', 'signal'], search: ['Search', 'warn'] }
+const KIND: Record<Pick['by'], string> = { country: 'Country', page: 'Page', ref: 'Arrived from', click: 'Click', search: 'Search', time: 'Time', type: 'Kind of request', device: 'Device', os: 'System', browser: 'Browser' }
 const stamp = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+export const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 /** What one request was, in a sentence. */
-const describe = (e: Event) => (e.type === 'search' ? `Searched “${e.label}”${e.value === 0 ? ', nothing found' : e.value != null ? `, ${e.value} results` : ''}` : e.type === 'click' ? clickName(e.label ?? '') : e.path === '/' ? 'Front page' : e.path ?? '')
+export const describe = (e: Event) => (e.type === 'search' ? `Searched “${e.label}”${e.value === 0 ? ', nothing found' : e.value != null ? `, ${e.value} results` : ''}` : e.type === 'click' ? clickName(e.label ?? '') : e.path === '/' ? 'Front page' : e.path ?? '')
 
-function DetailModal({ pick, days, onClose, onPick }: { pick: Pick; days: Data['days']; onClose: () => void; onPick: (p: Pick) => void }) {
+export function DetailModal({ pick, days, onClose, onPick }: { pick: Pick; days: Data['days']; onClose: () => void; onPick: (p: Pick) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null)
   const [events, setEvents] = useState<Event[]>([])
   const [error, setError] = useState('')
@@ -145,6 +153,12 @@ function DetailModal({ pick, days, onClose, onPick }: { pick: Pick; days: Data['
                     <div className="flex justify-between bg-white px-3 pb-2 pt-1 text-[11px] tabular-nums text-muted"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
                   </section>
 
+                  {detail.devices.length > 0 && pick.by !== 'device' && (
+                    <section>
+                      <h3 className="mb-2.5 border-t-2 border-ink pt-2 text-[15px] font-semibold">Devices</h3>
+                      <div className="max-w-[440px]"><RankBars rows={detail.devices.map((r) => ({ key: r.key, label: r.key, value: r.n }))} unit="requests" /></div>
+                    </section>
+                  )}
                   {side.length > 0 && (
                     <section className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
                       {side.map(([title, by, rows, name]) => (
@@ -171,7 +185,11 @@ function DetailModal({ pick, days, onClose, onPick }: { pick: Pick; days: Data['
                                 {(e.type === 'click' || e.type === 'search') && e.path && <span className="block truncate text-[12px] text-muted">on {e.path === '/' ? 'the front page' : e.path}</span>}
                                 {e.ref && <span className="block truncate text-[12px] text-muted">arrived from {e.ref}</span>}
                               </span>
-                              <span className="col-start-2 text-[12px] text-muted sm:col-start-auto sm:text-right">{e.country ? countryName(e.country) : 'No country'}{e.lang && e.lang !== 'en' ? ` · ${e.lang}` : ''}</span>
+                              <span className="col-start-2 text-[12px] text-muted sm:col-start-auto sm:text-right">
+                                <span className="block">{e.country ? countryName(e.country) : 'No country'}{e.lang && e.lang !== 'en' ? ` · ${e.lang}` : ''}</span>
+                                {e.device && <span className="block capitalize">{[e.device, e.os, e.browser].filter(Boolean).join(' · ')}</span>}
+                                {e.visit && <Link to={adminPath(`visits?id=${e.visit}`)} className="font-semibold text-ink underline decoration-signal decoration-2 underline-offset-[3px]">See this visit</Link>}
+                              </span>
                             </li>
                           ))}
                         </ol>
@@ -439,6 +457,50 @@ export function Engagement() {
             </Panel>
             <Panel title="Where readers arrive from" kicker={`${fmt(d.totals.referred)} of ${fmt(d.totals.pages)} pages came from another site`}>
               <RankBars rows={d.referrers.map((r) => ({ key: r.ref, label: r.ref, value: r.visits }))} unit="visits" onPick={(k) => setPick({ by: 'ref', value: k, title: k })} empty="No visits from other sites yet. Direct visits and visits from apps that hide the sender are not listed." />
+            </Panel>
+            <Panel title="Devices" kicker="What readers use, in broad terms" className="xl:col-span-2">
+              {d.devices.device.length === 0 ? <p className="text-[14px] text-muted">No device has been recorded yet. It is recorded from the next measured request on.</p> : (
+                <div className="grid gap-x-10 gap-y-6 sm:grid-cols-3">
+                  {([['device', 'Kind'], ['os', 'System'], ['browser', 'Browser']] as const).map(([k, title]) => (
+                    <div key={k} className="min-w-0">
+                      <h3 className="mb-2.5 text-[14px] font-semibold">{title}</h3>
+                      <RankBars rows={d.devices[k].map((r) => ({ key: r.key, label: k === 'device' ? `${r.key[0].toUpperCase()}${r.key.slice(1)}s`.replace('Desktops', 'Computers') : r.key, value: r.n }))} unit="requests" onPick={(key) => setPick({ by: k, value: key, title: k === 'device' ? `${key[0].toUpperCase()}${key.slice(1)}s`.replace('Desktops', 'Computers') : key })} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-4 text-[12.5px] text-muted">Only three broad words are kept for each request, such as “phone, Android, Chrome”: no version, no model, nothing that could single out one reader’s device. <Link to={adminPath('visits')} className="font-semibold text-ink underline decoration-signal decoration-2 underline-offset-[3px]">See visits one by one</Link></p>
+            </Panel>
+            <Panel title="Time on a page" kicker={d.time.median != null ? `Typical visit: ${secs(d.time.median)} · ${fmt(d.time.visits)} measured` : 'How long pages stay on screen'} className="xl:col-span-2">
+              {d.time.pages.length === 0 ? <p className="text-[14px] text-muted">Not enough visits measured yet. A page needs at least three before its time is shown, so that one reader’s visit is never singled out.</p> : (
+                <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <h3 className="mb-2.5 text-[14px] font-semibold">By page</h3>
+                    <ol className="grid gap-2.5">
+                      {d.time.pages.map((p) => (
+                        <li key={p.path} className="min-w-0">
+                          <div className="flex items-baseline justify-between gap-3 text-[13.5px]"><span className="min-w-0 truncate">{p.path === '/' ? 'Front page' : p.path}</span><span className="flex-none tabular-nums"><b>{secs(p.median)}</b> <span className="text-muted">· {fmt(p.visits)}</span></span></div>
+                          <div className="mt-1 h-1.5 bg-paper-2"><div className="h-full rounded-r-[3px] bg-ink" style={{ width: `${Math.min(100, (p.median / Math.max(1, ...d.time.pages.map((x) => x.median))) * 100)}%` }} /></div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="mb-2.5 text-[14px] font-semibold">By country</h3>
+                    {d.time.countries.length === 0 ? <p className="text-[13.5px] text-muted">No country has three measured visits yet.</p> : (
+                      <ol className="grid gap-2.5">
+                        {d.time.countries.map((c) => (
+                          <li key={c.code} className="min-w-0">
+                            <div className="flex items-baseline justify-between gap-3 text-[13.5px]"><span className="min-w-0 truncate">{countryName(c.code)}</span><span className="flex-none tabular-nums"><b>{secs(c.median)}</b> <span className="text-muted">· {fmt(c.visits)}</span></span></div>
+                            <div className="mt-1 h-1.5 bg-paper-2"><div className="h-full rounded-r-[3px] bg-ink" style={{ width: `${Math.min(100, (c.median / Math.max(1, ...d.time.countries.map((x) => x.median))) * 100)}%` }} /></div>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                </div>
+              )}
+              <p className="mt-4 text-[12.5px] text-muted">The typical time is the middle value: half of visits were shorter, half longer. Only seconds the page was actually on screen count, and each visit is capped at an hour. It is measured in the reader’s browser, never by IP address.</p>
             </Panel>
             <Panel title="Most opened pages" kicker="By page views">
               <RankBars rows={d.pages.map((p) => ({ key: p.path, label: p.path === '/' ? 'Front page' : p.path, value: p.views }))} unit="views" onPick={(k) => setPick({ by: 'page', value: k, title: k === '/' ? 'Front page' : k })} empty="No pages opened yet." />

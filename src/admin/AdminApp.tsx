@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { Activity, BarChart3, Eye, EyeOff, ExternalLink, FileText, Globe2, Inbox, KeyRound, LogOut, Mail, Menu, MoreHorizontal, Plus, Radio, ScrollText, Send, ShieldCheck, Users } from 'lucide-react'
+import { Activity, BarChart3, Eye, EyeOff, ExternalLink, FileText, Globe2, Inbox, KeyRound, LogOut, Mail, Menu, MoreHorizontal, Orbit, Route, Plus, Radio, ScrollText, Send, ShieldCheck, Users } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -17,6 +17,8 @@ import { useLive, useLiveStatus as useDashboardLive, usePresenceKeeper } from '.
 import { AccountMenu, GoItem, GoTo, Menu as DropMenu } from './navbar'
 
 // The Engagement page carries the map outlines, so it is loaded only when opened.
+const Visits = React.lazy(() => import('./visits').then((m) => ({ default: m.Visits })))
+const Universe = React.lazy(() => import('./universe').then((m) => ({ default: m.Universe })))
 const Engagement = React.lazy(() => import('./engagement').then((m) => ({ default: m.Engagement })))
 import { Account, Audit, InboxView, Overview, Staff, Stories, Subscribers, Wire } from './views'
 
@@ -48,10 +50,10 @@ type Ctx = { user: User; overview: OverviewData | null; corrections: Correction[
 const AdminContext = createContext<Ctx>(null as unknown as Ctx)
 export const useAdmin = () => useContext(AdminContext)
 
-type TabId = 'overview' | 'engagement' | 'webtrends' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'email' | 'staff' | 'audit' | 'account'
+type TabId = 'overview' | 'engagement' | 'visits' | 'universe' | 'webtrends' | 'stories' | 'wire' | 'inbox' | 'subscribers' | 'email' | 'staff' | 'audit' | 'account'
 type NavItem = { id: TabId; label: string; Icon: typeof BarChart3 }
 const NAV: { group: string; admin?: boolean; items: NavItem[] }[] = [
-  { group: 'Newsroom', items: [{ id: 'overview', label: 'Overview', Icon: BarChart3 }, { id: 'engagement', label: 'Engagement', Icon: Activity }, { id: 'webtrends', label: 'Web trends', Icon: Globe2 }, { id: 'stories', label: 'Stories', Icon: FileText }, { id: 'wire', label: 'Live wire', Icon: Radio }] },
+  { group: 'Newsroom', items: [{ id: 'overview', label: 'Overview', Icon: BarChart3 }, { id: 'engagement', label: 'Engagement', Icon: Activity }, { id: 'visits', label: 'Visits', Icon: Route }, { id: 'universe', label: 'Live globe', Icon: Orbit }, { id: 'webtrends', label: 'Web trends', Icon: Globe2 }, { id: 'stories', label: 'Stories', Icon: FileText }, { id: 'wire', label: 'Live wire', Icon: Radio }] },
   { group: 'Readers', items: [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'subscribers', label: 'Subscribers', Icon: Mail }, { id: 'email', label: 'Email', Icon: Send }] },
   { group: 'Administration', admin: true, items: [{ id: 'staff', label: 'Staff', Icon: Users }, { id: 'audit', label: 'Audit log', Icon: ScrollText }] },
   { group: 'You', items: [{ id: 'account', label: 'Your account', Icon: KeyRound }] },
@@ -59,6 +61,8 @@ const NAV: { group: string; admin?: boolean; items: NavItem[] }[] = [
 const TITLES: Record<TabId, [string, string]> = {
   overview: ['Overview', 'How the edition is doing today'],
   engagement: ['Engagement', 'Pages, clicks, searches and where readers are'],
+  visits: ['Visits', 'One visit at a time: its route, device and time on each page'],
+  universe: ['Live globe', 'Every request, from its country to the server, as it happens'],
   webtrends: ['Web trends', 'Outside sources, and the engine that fetches them'],
   stories: ['Stories', 'Write, edit and publish'],
   wire: ['Live wire', 'File updates to every open page'],
@@ -259,6 +263,8 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
             <main ref={mainRef} className="min-w-0 px-4 pb-28 pt-5 sm:px-6 lg:h-full lg:overflow-y-auto lg:overscroll-contain lg:px-8 lg:pb-12 lg:pt-7">
               {current.id === 'overview' && <Overview />}
               {current.id === 'engagement' && <React.Suspense fallback={<div className="shimmer h-[420px] bg-paper-2" />}><Engagement /></React.Suspense>}
+              {current.id === 'visits' && <React.Suspense fallback={<div className="shimmer h-[420px] bg-paper-2" />}><Visits /></React.Suspense>}
+              {current.id === 'universe' && <React.Suspense fallback={<div className="shimmer h-[520px] bg-paper-2" />}><Universe /></React.Suspense>}
               {current.id === 'webtrends' && <WebTrendsAdmin />}
               {current.id === 'stories' && <Stories />}
               {current.id === 'wire' && <Wire />}

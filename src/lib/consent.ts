@@ -23,12 +23,13 @@ export type Consent = { v: number; at: number } & Record<Purpose, boolean>
 
 /** Raise this when the notice changes in a way readers should see again. */
 // 3: measurement now also covers pages opened, clicks, the site a reader arrived from and searches.
-export const CONSENT_VERSION = 3
+// 4: and how long a page was on screen, the kind of device, and a code linking the pages of one visit.
+export const CONSENT_VERSION = 4
 const MAX_AGE_MS = 182 * 24 * 60 * 60 * 1000
 const KEY = 'ma-consent'
 
 export const PURPOSES: { id: Purpose; name: string; about: string }[] = [
-  { id: 'measurement', name: 'Readership measurement', about: 'Counts which pages and stories are opened, what is pressed, which site you arrived from and what is searched for, so editors know what is useful. No profile of you is built and your IP address is not stored.' },
+  { id: 'measurement', name: 'Readership measurement', about: 'Counts which pages and stories are opened and for how long, what is pressed, which site you arrived from, what is searched for, and the kind of device (such as “phone, Android, Chrome”), so editors know what is useful. The pages of one visit are linked to each other by a random code that ends when you close the tab. It is not linked to you, to your other visits or to an IP address, which is not stored.' },
   { id: 'ads', name: 'Advertising by Google', about: 'Lets Google choose and measure adverts, including video adverts. If you deny it you still see adverts, but only our own, with no tracking.' },
   { id: 'translation', name: 'Translation by Google', about: 'Needed to read MirrorActu in another language, including the one we offer for your country. The page text is sent to Google Translate.' },
 ]

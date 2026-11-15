@@ -356,6 +356,34 @@ Links are built from the **first** address in `SITE_ORIGIN`, so put the real dom
 going live, add the site in Google Search Console and Bing Webmaster Tools and submit
 `/sitemap.xml` and `/news-sitemap.xml`.
 
+## Live globe, visits, devices and time on a page
+
+- **Live globe** (dashboard → Live globe, `src/admin/universe.tsx`). A 3D globe drawn on a plain
+  canvas with its own small maths, so there is no 3D library. Each reader request leaves its
+  country, arcs over the globe and lands on the server, coloured by kind (page, story, click,
+  search). Countries warm up as they get busy. When the site is quiet the last 24 hours are
+  replayed, marked as a replay. Drag to turn, scroll to zoom, click a country for its requests.
+  Everything it shows is also in words beside it. The server's position comes from Railway's
+  region, or `SERVER_LOCATION="lat,lon,Label"`.
+- **Visits** (dashboard → Visits, `src/admin/visits.tsx`). One visit at a time: the page the
+  reader arrived on, every page after it, clicks and searches in order, the gap between steps
+  and how long each page was on screen. A visit still going on updates by itself.
+- **Devices.** Three broad words per request ("phone · Android · Chrome"), with breakdowns on
+  Engagement. No versions and no model.
+- **Time on a page.** The seconds a page was really on screen (a background tab does not count),
+  reported by the reader's browser when they leave it, capped at an hour. Shown as the middle
+  value per page and per country, and only once a page has three visits.
+
+How this stays within what readers agreed to:
+
+- A visit is known by a **random code made in the reader's browser** for that visit. It is not
+  derived from an IP address (none is stored), it is gone when the tab closes, and the next
+  visit gets a new one. Visits are never linked to each other or to a person.
+- All of it is sent only by readers who allowed measurement, and never with Global Privacy
+  Control. The cookie notice describes it, and the consent version was raised (to 4), so every
+  reader is asked again.
+- The dashboard is never sent an IP address or the daily reader code used for counting.
+
 ## Real time (WebSockets)
 
 Nothing on the site or the dashboard needs refreshing by hand. Each open page holds one

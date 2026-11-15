@@ -220,7 +220,7 @@ export async function publicRoutes(app: FastifyInstance) {
     if (req.headers['sec-gpc'] === '1') return reply.code(204).send()
     const body = z
       .object({
-        type: z.enum(['view', 'page', 'click', 'search']),
+        type: z.enum(['view', 'page', 'click', 'search', 'time']),
         storyId: z.string().max(80).optional(),
         path: z.string().max(300),
         country: z.string().max(3).optional(),
@@ -230,15 +230,22 @@ export async function publicRoutes(app: FastifyInstance) {
         /** The site the reader came from: a host name only, never a full address */
         ref: z.string().trim().toLowerCase().regex(/^[a-z0-9.-]{1,80}$/).optional(),
         value: z.number().int().min(0).max(100000).optional(),
+        /** Broad categories only, chosen from fixed lists */
+        device: z.enum(['phone', 'tablet', 'desktop']).optional(),
+        os: z.enum(['Android', 'iOS', 'Windows', 'macOS', 'Linux', 'ChromeOS', 'Other']).optional(),
+        browser: z.enum(['Chrome', 'Safari', 'Firefox', 'Edge', 'Opera', 'Samsung Internet', 'Other']).optional(),
+        /** A random code for this one visit, made by the reader's browser */
+        visit: z.string().regex(/^[a-z0-9]{10,24}$/).optional(),
       })
       .safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Bad event.' })
     const b = body.data
     // Only the page's path is kept: anything after "?" could carry something personal.
     const path = b.path.split(/[?#]/)[0]
-    await q('INSERT INTO events (type, story_id, path, country, lang, visitor, label, ref, value) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.type, b.storyId ?? null, path, countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req), b.label || null, b.ref || null, b.value ?? null])
-    // The dashboard sees it as it happens. No reader code is included.
-    publish('event', { at: new Date().toISOString(), type: b.type, path, label: b.label || null, ref: b.ref || null, value: b.value ?? null, country: countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), lang: b.lang ?? null })
+    await q('INSERT INTO events (type, story_id, path, country, lang, visitor, label, ref, value, device, os, browser, visit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)', [b.type, b.storyId ?? null, path, countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), b.lang ?? null, visitorHash(req), b.label || null, b.ref || null, b.type === 'time' ? Math.min(b.value ?? 0, 3600) : (b.value ?? null), b.device ?? null, b.os ?? null, b.browser ?? null, b.visit ?? null])
+    // The dashboard sees it as it happens. No reader code is included. (Time on a page is a
+    // measurement, not a request, so it is not announced.)
+    if (b.type !== 'time') publish('event', { at: new Date().toISOString(), type: b.type, path, label: b.label || null, ref: b.ref || null, value: b.value ?? null, country: countryFromHeaders(req.headers) ?? (b.country && /^[A-Za-z]{2}$/.test(b.country) ? b.country.toUpperCase() : null), lang: b.lang ?? null, device: b.device ?? null, os: b.os ?? null, browser: b.browser ?? null, visit: b.visit ?? null })
     return reply.code(204).send()
   })
 }

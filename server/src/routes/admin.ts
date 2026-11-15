@@ -136,18 +136,28 @@ export async function adminRoutes(app: FastifyInstance) {
         totals('$1 * 2', '$1'),
         // Hour by hour for 1 day, otherwise day by day.
         days === 1
-          ? q(`SELECT to_char(h, 'YYYY-MM-DD"T"HH24:00') AS t, count(e.id) AS n FROM generate_series(date_trunc('hour', now()) - interval '23 hours', date_trunc('hour', now()), '1 hour') h LEFT JOIN events e ON e.at >= h AND e.at < h + interval '1 hour' GROUP BY h ORDER BY h`)
-          : q(`SELECT to_char(d, 'YYYY-MM-DD') AS t, count(e.id) AS n FROM generate_series(current_date - ($1::int - 1), current_date, '1 day') d LEFT JOIN events e ON e.at >= d AND e.at < d + interval '1 day' GROUP BY d ORDER BY d`, [days]),
+          ? q(`SELECT to_char(h, 'YYYY-MM-DD"T"HH24:00') AS t, count(e.id) AS n FROM generate_series(date_trunc('hour', now()) - interval '23 hours', date_trunc('hour', now()), '1 hour') h LEFT JOIN events e ON e.at >= h AND e.at < h + interval '1 hour' AND e.type <> 'time' GROUP BY h ORDER BY h`)
+          : q(`SELECT to_char(d, 'YYYY-MM-DD') AS t, count(e.id) AS n FROM generate_series(current_date - ($1::int - 1), current_date, '1 day') d LEFT JOIN events e ON e.at >= d AND e.at < d + interval '1 day' AND e.type <> 'time' GROUP BY d ORDER BY d`, [days]),
         q(`SELECT path, count(*) AS views, count(DISTINCT visitor) AS readers FROM events WHERE type = 'page' AND ${since} GROUP BY path ORDER BY views DESC LIMIT 12`, [days]),
         q(`SELECT ref, count(*) AS visits FROM events WHERE type = 'page' AND ref IS NOT NULL AND ${since} GROUP BY ref ORDER BY visits DESC LIMIT 10`, [days]),
         q(`SELECT label, count(*) AS n FROM events WHERE type = 'click' AND label IS NOT NULL AND ${since} GROUP BY label ORDER BY n DESC LIMIT 12`, [days]),
         q(`SELECT lower(label) AS q, count(*) AS n, count(*) FILTER (WHERE value = 0) AS empty FROM events WHERE type = 'search' AND label IS NOT NULL AND ${since} GROUP BY 1 ORDER BY n DESC LIMIT 12`, [days]),
-        q(`SELECT country AS code, count(*) AS requests, count(*) FILTER (WHERE type = 'page') AS pages, count(DISTINCT visitor) AS readers FROM events WHERE country IS NOT NULL AND ${since} GROUP BY country ORDER BY requests DESC`, [days]),
+        q(`SELECT country AS code, count(*) AS requests, count(*) FILTER (WHERE type = 'page') AS pages, count(DISTINCT visitor) AS readers FROM events WHERE country IS NOT NULL AND type <> 'time' AND ${since} GROUP BY country ORDER BY requests DESC`, [days]),
       ])
       // The hour of the day (UTC) that carries the most, over the whole period: when to expect load.
-      const busiest = await one(`SELECT extract(hour FROM at)::int AS hour, count(*) AS n FROM events WHERE ${since} GROUP BY 1 ORDER BY n DESC LIMIT 1`, [days])
-      const unknown = await one(`SELECT count(*) AS n FROM events WHERE country IS NULL AND ${since}`, [days])
-      return { days, totals: num(now), previous: num(before), series: hours.map(num), pages: pages.map(num), referrers: referrers.map(num), clicks: clicks.map(num), searches: searches.map(num), countries: countries.map(num), busiestHour: busiest ? num(busiest) : null, unknownCountry: Number(unknown?.n ?? 0) }
+      const busiest = await one(`SELECT extract(hour FROM at)::int AS hour, count(*) AS n FROM events WHERE type <> 'time' AND ${since} GROUP BY 1 ORDER BY n DESC LIMIT 1`, [days])
+      const unknown = await one(`SELECT count(*) AS n FROM events WHERE country IS NULL AND type <> 'time' AND ${since}`, [days])
+      // Time on page: the middle value (half the visits were shorter, half longer), which a few
+      // tabs left open all afternoon cannot distort the way an average would.
+      const med = 'round(percentile_cont(0.5) WITHIN GROUP (ORDER BY value))::int'
+      const [timeAll, timePages, timeCountries] = await Promise.all([
+        one(`SELECT ${med} AS median, count(*) AS visits FROM events WHERE type = 'time' AND value > 0 AND ${since}`, [days]),
+        q(`SELECT path, ${med} AS median, count(*) AS visits FROM events WHERE type = 'time' AND value > 0 AND ${since} GROUP BY path HAVING count(*) >= 3 ORDER BY visits DESC LIMIT 10`, [days]),
+        q(`SELECT country AS code, ${med} AS median, count(*) AS visits FROM events WHERE type = 'time' AND value > 0 AND country IS NOT NULL AND ${since} GROUP BY country HAVING count(*) >= 3 ORDER BY visits DESC LIMIT 10`, [days]),
+      ])
+      const by3 = (col: string) => q(`SELECT ${col} AS key, count(*) AS n, count(DISTINCT coalesce(visit, visitor)) AS readers FROM events WHERE ${col} IS NOT NULL AND type <> 'time' AND ${since} GROUP BY 1 ORDER BY n DESC LIMIT 8`, [days])
+      const [devices, systems, browsers] = await Promise.all([by3('device'), by3('os'), by3('browser')])
+      return { days, devices: { device: devices.map(num), os: systems.map(num), browser: browsers.map(num) }, time: { ...num(timeAll), pages: timePages.map(num), countries: timeCountries.map(num) }, totals: num(now), previous: num(before), series: hours.map(num), pages: pages.map(num), referrers: referrers.map(num), clicks: clicks.map(num), searches: searches.map(num), countries: countries.map(num), busiestHour: busiest ? num(busiest) : null, unknownCountry: Number(unknown?.n ?? 0) }
     })
 
     /**
@@ -161,7 +171,7 @@ export async function adminRoutes(app: FastifyInstance) {
       const p = z
         .object({
           days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d)).default(7),
-          by: z.enum(['country', 'page', 'ref', 'click', 'search', 'time', 'type']),
+          by: z.enum(['country', 'page', 'ref', 'click', 'search', 'time', 'type', 'device', 'os', 'browser']),
           value: z.string().max(300),
           offset: z.coerce.number().int().min(0).max(100000).default(0),
         })
@@ -170,13 +180,15 @@ export async function adminRoutes(app: FastifyInstance) {
       const { days, by, value, offset } = p.data
       const args: unknown[] = [days]
       const add = (v: unknown) => `$${args.push(v)}`
-      let where = 'at > now() - make_interval(days => $1)'
+      // Time on page is a measurement, not a request: it has its own figures.
+      let where = "at > now() - make_interval(days => $1) AND type <> 'time'"
       if (by === 'country') where += value === 'none' ? ' AND country IS NULL' : ` AND country = ${add(value.toUpperCase())}`
       if (by === 'page') where += ` AND path = ${add(value)} AND type IN ('page', 'view')`
       if (by === 'ref') where += ` AND ref = ${add(value)}`
       if (by === 'click') where += ` AND type = 'click' AND label = ${add(value)}`
       if (by === 'search') where += ` AND type = 'search' AND lower(label) = ${add(value.toLowerCase())}`
       if (by === 'type') where += ` AND type = ${add(value)}`
+      if (by === 'device' || by === 'os' || by === 'browser') where += ` AND ${by} = ${add(value)}`
       if (by === 'time') {
         // An hour ("2026-11-15T14:00") or a day ("2026-11-15"), as the chart labels them (UTC).
         const hour = /^\d{4}-\d{2}-\d{2}T\d{2}:00$/.test(value)
@@ -185,7 +197,7 @@ export async function adminRoutes(app: FastifyInstance) {
       }
       const num = (r: any) => Object.fromEntries(Object.entries(r ?? {}).map(([k, v]) => [k, typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v]))
       const top = (col: string, extra = '') => q(`SELECT ${col} AS key, count(*) AS n FROM events WHERE ${where} AND ${col} IS NOT NULL ${extra} GROUP BY 1 ORDER BY n DESC LIMIT 8`, args)
-      const [summary, hours, types, pages, countries, refs, langs, labels, events] = await Promise.all([
+      const [summary, hours, types, pages, countries, refs, langs, devices, labels, events] = await Promise.all([
         one(`SELECT count(*) AS requests, count(DISTINCT visitor) AS readers, count(*) FILTER (WHERE type = 'page') AS pages, count(*) FILTER (WHERE type = 'view') AS views, count(*) FILTER (WHERE type = 'click') AS clicks, count(*) FILTER (WHERE type = 'search') AS searches, min(at) AS first, max(at) AS last FROM events WHERE ${where}`, args),
         // When in the day it happens (UTC), whatever the period: 24 bars.
         q(`SELECT h AS hour, count(x.at) AS n FROM generate_series(0, 23) h LEFT JOIN (SELECT at FROM events WHERE ${where}) x ON extract(hour FROM x.at)::int = h GROUP BY h ORDER BY h`, args),
@@ -194,11 +206,68 @@ export async function adminRoutes(app: FastifyInstance) {
         top('country'),
         top('ref'),
         top('lang'),
+        q(`SELECT concat_ws(' · ', initcap(device), os, browser) AS key, count(*) AS n FROM events WHERE ${where} AND device IS NOT NULL GROUP BY 1 ORDER BY n DESC LIMIT 8`, args),
         q(`SELECT type, label AS key, count(*) AS n FROM events WHERE ${where} AND label IS NOT NULL AND type IN ('click', 'search') GROUP BY 1, 2 ORDER BY n DESC LIMIT 8`, args),
         // The offset is this query's own parameter: the others share `args` and must not see it.
-        q(`SELECT at, type, path, label, ref, value, country, lang FROM events WHERE ${where} ORDER BY at DESC, id DESC LIMIT 60 OFFSET $${args.length + 1}`, [...args, offset]),
+        q(`SELECT at, type, path, label, ref, value, country, lang, device, os, browser, visit FROM events WHERE ${where} ORDER BY at DESC, id DESC LIMIT 60 OFFSET $${args.length + 1}`, [...args, offset]),
       ])
-      return { days, by, value, summary: num(summary), hours: hours.map(num), types: types.map(num), pages: pages.map(num), countries: countries.map(num), referrers: refs.map(num), languages: langs.map(num), labels: labels.map(num), events, offset, more: offset + events.length < Number((summary as any)?.requests ?? 0) }
+      return { days, by, value, summary: num(summary), hours: hours.map(num), types: types.map(num), pages: pages.map(num), countries: countries.map(num), referrers: refs.map(num), languages: langs.map(num), devices: devices.map(num), labels: labels.map(num), events, offset, more: offset + events.length < Number((summary as any)?.requests ?? 0) }
+    })
+
+    /**
+     * Visits. A visit is one reader's time on the site in one tab: its pages, clicks and searches
+     * in order. It is known only by a random code made in the reader's browser for that visit.
+     * It carries no IP address, and visits are not linked to each other or to a person.
+     */
+    admin.get('/visits', async (req) => {
+      const p = z.object({ days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d)).default(1), offset: z.coerce.number().int().min(0).max(100000).default(0), country: z.string().max(3).optional(), device: z.string().max(10).optional() }).parse(req.query)
+      const args: unknown[] = [p.days]
+      let where = 'visit IS NOT NULL AND at > now() - make_interval(days => $1)'
+      if (p.country) where += ` AND country = $${args.push(p.country.toUpperCase())}`
+      if (p.device) where += ` AND device = $${args.push(p.device)}`
+      const rows = await q(
+        `SELECT visit, min(at) AS started, max(at) AS ended, count(*) FILTER (WHERE type IN ('page', 'view')) AS pages, count(*) FILTER (WHERE type = 'click') AS clicks, count(*) FILTER (WHERE type = 'search') AS searches,
+                coalesce(sum(value) FILTER (WHERE type = 'time'), 0) AS seconds, max(country) AS country, max(device) AS device, max(os) AS os, max(browser) AS browser, max(lang) AS lang,
+                (array_agg(path ORDER BY at) FILTER (WHERE type IN ('page', 'view')))[1] AS entry, (array_agg(path ORDER BY at DESC) FILTER (WHERE type IN ('page', 'view')))[1] AS exit, (array_agg(ref ORDER BY at) FILTER (WHERE ref IS NOT NULL))[1] AS ref
+         FROM events WHERE ${where} GROUP BY visit ORDER BY started DESC LIMIT 50 OFFSET $${args.push(p.offset)}`,
+        args
+      )
+      const total = await one(`SELECT count(DISTINCT visit) AS n, round(avg(pages))::numeric(6,1) AS avg_pages FROM (SELECT visit, count(*) FILTER (WHERE type IN ('page', 'view')) AS pages FROM events WHERE ${where} GROUP BY visit) v`, args.slice(0, -1))
+      const numeric = (r: any) => ({ ...r, pages: Number(r.pages), clicks: Number(r.clicks), searches: Number(r.searches), seconds: Number(r.seconds) })
+      return { days: p.days, total: Number(total?.n ?? 0), averagePages: total?.avg_pages != null ? Number(total.avg_pages) : null, visits: rows.map(numeric), more: p.offset + rows.length < Number(total?.n ?? 0) }
+    })
+
+    /** One visit, step by step, in the order it happened. */
+    admin.get('/visits/:id', async (req, reply) => {
+      const { id } = z.object({ id: z.string().regex(/^[a-z0-9]{10,24}$/) }).parse(req.params)
+      const steps = await q('SELECT at, type, path, label, ref, value, country, lang, device, os, browser FROM events WHERE visit = $1 ORDER BY at, id LIMIT 500', [id])
+      if (!steps.length) return reply.code(404).send({ error: 'No such visit. It may be older than the events we keep.' })
+      // Story headlines, so a path reads as what it was.
+      const slugs = [...new Set(steps.map((s) => String(s.path ?? '').match(/^\/story\/(.+)$/)?.[1]).filter(Boolean))]
+      const titles = slugs.length ? await q<{ slug: string; id: string; h: string }>("SELECT slug, id, data->>'h' AS h FROM stories WHERE slug = ANY($1) OR id = ANY($1)", [slugs]) : []
+      return { id, steps, titles: Object.fromEntries(titles.flatMap((t) => [[`/story/${t.slug}`, t.h], [`/story/${t.id}`, t.h]])) }
+    })
+
+    /**
+     * For the 3D view: where the server is, where each country is counted from, and the most
+     * recent requests to replay when the site is quiet.
+     */
+    admin.get('/universe', async () => {
+      const REGIONS: [RegExp, number, number, string][] = [
+        [/^us-west1/, 45.6, -121.2, 'Oregon, US'], [/^us-west/, 34.05, -118.24, 'California, US'], [/^us-east/, 39.03, -77.48, 'Virginia, US'],
+        [/^europe-west4/, 52.37, 4.9, 'Netherlands'], [/^europe/, 50.11, 8.68, 'Europe'], [/^asia-southeast/, 1.35, 103.82, 'Singapore'],
+      ]
+      const set = config.serverLocation.split(',').map((x) => x.trim())
+      const region = REGIONS.find(([re]) => re.test(config.serverRegion))
+      const server = set.length >= 2 && Number.isFinite(Number(set[0])) && Number.isFinite(Number(set[1]))
+        ? { lat: Number(set[0]), lon: Number(set[1]), label: set[2] || 'Server', known: true }
+        : region
+          ? { lat: region[1], lon: region[2], label: region[3], known: true }
+          : { lat: 52.37, lon: 4.9, label: 'Server', known: false }
+      const recent = await q("SELECT at, type, path, label, ref, value, country, lang, device, os, browser, visit FROM events WHERE type <> 'time' AND at > now() - interval '24 hours' ORDER BY at DESC, id DESC LIMIT 400")
+      const today = await one("SELECT count(*) AS requests, count(DISTINCT visitor) AS readers, count(DISTINCT country) AS countries FROM events WHERE type <> 'time' AND at > now() - interval '24 hours'")
+      const med = await one("SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY value))::int AS median FROM events WHERE type = 'time' AND value > 0 AND at > now() - interval '24 hours'")
+      return { server, recent: recent.reverse(), today: { requests: Number(today?.requests ?? 0), readers: Number(today?.readers ?? 0), countries: Number(today?.countries ?? 0), medianSeconds: med?.median ?? null } }
     })
 
     /* ---------- Trending on the web: the engine's state and its switches ---------- */

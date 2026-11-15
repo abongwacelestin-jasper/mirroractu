@@ -40,6 +40,10 @@
  *                         name with a way to reach you, e.g. "MirrorActu/1.0 (https://yourdomain)".
  *   WEB_TRENDS_BUDGET_GOOGLE / _GDELT / _WIKIMEDIA   most requests per day to each source
  *
+ * The 3D view
+ *   SERVER_LOCATION       where the API runs, as "lat,lon,Label", e.g. "52.37,4.90,Amsterdam". On
+ *                         Railway it is worked out from the region, so this is only needed elsewhere.
+ *
  * Staff accounts, created automatically on every start (see auth.ts → syncStaff)
  *   ADMIN_EMAILS          administrators, comma separated: "Ada Obi <ada@x.com>, sam@x.com"
  *   EDITOR_EMAILS         editors, same format
@@ -114,6 +118,9 @@ export const config = {
   webTrendsSources: (env.WEB_TRENDS_SOURCES || 'google,gdelt,wikimedia').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   webTrendsUserAgent: env.WEB_TRENDS_USER_AGENT || 'news-trends-fetcher/1.0',
   webTrendsBudget: { google: int('WEB_TRENDS_BUDGET_GOOGLE', 1500), gdelt: int('WEB_TRENDS_BUDGET_GDELT', 1200), wikimedia: int('WEB_TRENDS_BUDGET_WIKIMEDIA', 200) } as Record<string, number>,
+  /** Where the API runs, for the dashboard's 3D view: "lat,lon,Label". Worked out from Railway's region if not set. */
+  serverLocation: env.SERVER_LOCATION ?? '',
+  serverRegion: env.RAILWAY_REPLICA_REGION ?? '',
   ratesUrl: env.RATES_URL || 'https://open.er-api.com/v6/latest/USD',
   adminOrigins: (env.ADMIN_ORIGIN ?? 'http://localhost:8081,http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   adminGatewayKey: env.ADMIN_GATEWAY_KEY ?? '',

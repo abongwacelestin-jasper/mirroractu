@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { eventContext } from '@/lib/track'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { twMerge } from 'tailwind-merge'
 
@@ -40,7 +41,7 @@ export function StoryPage() {
     if (!story) return
     markRead(story.id)
     // Readership is counted only for readers who allowed measurement. No IP address is stored.
-    if (allows('measurement')) api('/events', { body: { type: 'view', storyId: story.id, path: storyPath(story.id), country: country.code, lang: currentLanguage() } }).catch(() => {})
+    if (allows('measurement')) api('/events', { body: { type: 'view', storyId: story.id, path: storyPath(story.id), ...eventContext(), country: country.code, lang: currentLanguage() } }).catch(() => {})
   }, [story?.id])
   const liveUpdates = useWire({ storyId, max: 1 }).items.length > 0
 
