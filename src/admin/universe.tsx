@@ -13,7 +13,7 @@
  * Nothing here identifies a reader. A request is a kind, a page and a country.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Maximize2, Pause, Play, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Maximize2, Minus, Pause, Play, Plus, SlidersHorizontal, X, ZoomIn, ZoomOut } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { DetailModal, Event, Pick, TYPE, clock, countryName, describe } from './engagement'
@@ -91,6 +91,14 @@ export function Universe() {
   const [error, setError] = useState('')
   const [paused, setPaused] = useState(false)
   const [replay, setReplay] = useState(true)
+  // How the globe moves: stay on wherever requests are coming from, turn slowly, or hold still.
+  const [view, setView] = useState<'follow' | 'spin' | 'still'>('follow')
+  const [shown, setShown] = useState<Record<Kind, boolean>>({ page: true, view: true, click: true, search: true })
+  const [speed, setSpeed] = useState<'slow' | 'normal' | 'fast'>('normal')
+  const [names, setNames] = useState(true)
+  const [routes, setRoutes] = useState(true)
+  const [byHand, setByHand] = useState(false)
+  const [panel, setPanel] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 900)
   const [mode, setMode] = useState<'live' | 'replay' | 'waiting'>('waiting')
   const [latest, setLatest] = useState<(Event & { replayed?: boolean })[]>([])
   const [counts, setCounts] = useState<Record<Kind, number>>({ page: 0, view: 0, click: 0, search: 0 })
@@ -101,8 +109,9 @@ export function Universe() {
   const reduce = useMemo(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches, [])
 
   // Everything the animation needs between frames lives here, outside React's renders.
-  const world = useRef({ yaw: -0.45, pitch: 0.28, zoom: 1, drag: null as null | { x: number; y: number; yaw: number; pitch: number; moved: boolean }, particles: [] as Particle[], pulses: [] as Pulse[], heat: new Map<string, number>(), arrivals: 0, lastLive: 0, serverGlow: 0, paused: false, hover: null as string | null, spin: 0, tilt: 0, rings: [] as number[] })
+  const world = useRef({ yaw: -0.45, pitch: 0.28, zoom: 1, drag: null as null | { x: number; y: number; yaw: number; pitch: number; moved: boolean }, particles: [] as Particle[], pulses: [] as Pulse[], heat: new Map<string, number>(), arrivals: 0, lastLive: 0, serverGlow: 0, paused: false, hover: null as string | null, spin: 0, tilt: 0, rings: [] as number[], view: 'follow' as 'follow' | 'spin' | 'still', shown: { page: true, view: true, click: true, search: true } as Record<Kind, boolean>, rate: 1, names: true, routes: true, handsOff: 0, aim: null as null | { yaw: number; pitch: number; zoom?: number }, seen: new Map<string, number>() })
   world.current.paused = paused
+  Object.assign(world.current, { view, shown, names, routes, rate: speed === 'slow' ? 0.55 : speed === 'fast' ? 1.8 : 1 })
 
   useEffect(() => {
     api<Config>('/admin/universe').then(setConfig).catch((e: ApiError) => setError(e.message))
@@ -112,6 +121,9 @@ export function Universe() {
   /** Put one request into the picture. */
   const launch = (e: Event, replayed = false) => {
     const w = world.current
+    // A kind that is switched off in the controls is not drawn, listed or counted.
+    if (!w.shown[e.type]) return
+    if (e.country) w.seen.set(e.country, performance.now())
     const centre = e.country ? CENTRE.get(e.country) : undefined
     // A request with no country arrives from outside the globe, not from a made-up place.
     const outer = !centre
@@ -190,8 +202,42 @@ export function Universe() {
         w.pitch = Math.max(-1.2, Math.min(1.2, w.pitch + w.tilt * dt))
         w.spin *= Math.pow(0.04, dt)
         w.tilt *= Math.pow(0.04, dt)
-        // One full turn takes about seven minutes: slow enough to read, never still.
-        if (!w.paused && !reduce) w.yaw += dt * 0.015
+        const ease = (rate: number) => 1 - Math.pow(0.5, dt / rate)
+        const towards = (yaw: number, pitch: number, rate: number) => {
+          // Turn the short way round.
+          const d = ((((yaw - w.yaw) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+          w.yaw += d * ease(rate)
+          w.pitch += (Math.max(-1, Math.min(1, pitch)) - w.pitch) * ease(rate)
+          return Math.abs(d) + Math.abs(pitch - w.pitch)
+        }
+        if (w.aim) {
+          // A place chosen in the controls: glide to it, then leave the view there.
+          if (w.aim.zoom) w.zoom += (w.aim.zoom - w.zoom) * ease(0.5)
+          if (towards(w.aim.yaw, w.aim.pitch, 0.45) < 0.004) w.aim = null
+        } else if (!w.paused && now > w.handsOff) {
+          if (w.view === 'follow') {
+            // Stay on wherever requests are coming from: face the middle of the busy countries,
+            // weighted by how busy each is. With nothing happening the view simply holds.
+            let x = 0, y = 0, z = 0, weight = 0
+            for (let [code, heat] of w.heat) {
+              const c = CENTRE.get(code)
+              if (!c || heat < 0.05) continue
+              // What counts is where requests are coming from now: a place that was busy a
+              // minute ago stays lit, but no longer pulls the view towards it.
+              heat *= Math.pow(0.5, (now - (w.seen.get(code) ?? 0)) / 12000)
+              if (heat < 0.02) continue
+              x += c[0] * heat
+              y += c[1] * heat
+              z += c[2] * heat
+              weight += heat
+            }
+            const length = Math.hypot(x, y, z)
+            if (weight > 0.1 && length > 0.05) towards(-Math.atan2(x, z), Math.asin(Math.max(-1, Math.min(1, y / length))) * 0.85, reduce ? 0.01 : 2.2)
+          } else if (w.view === 'spin' && !reduce) {
+            // One full turn takes about seven minutes: slow enough to read.
+            w.yaw += dt * 0.015
+          }
+        }
       }
       const R = Math.min(width, height) * 0.38 * w.zoom
       const cx = width / 2
@@ -419,7 +465,7 @@ export function Universe() {
       ctx.globalCompositeOperation = 'lighter'
       const alive: Particle[] = []
       for (const p of w.particles) {
-        if (!w.paused) p.t += dt * p.speed
+        if (!w.paused) p.t += dt * p.speed * w.rate
         if (p.t >= 1) {
           w.serverGlow = Math.min(1, w.serverGlow + 0.35)
           w.arrivals++
@@ -435,7 +481,7 @@ export function Universe() {
         }
         // The whole route, very faintly, so the eye can follow where it is going.
         ctx.strokeStyle = COLOR[p.kind]
-        ctx.globalAlpha = 0.07
+        ctx.globalAlpha = w.routes ? 0.07 : 0
         ctx.lineWidth = 1
         ctx.beginPath()
         let pen = false
@@ -492,7 +538,7 @@ export function Universe() {
       const placed: [number, number, number, number][] = sv[2] > 0 ? [[sv[0] - 12, sv[1] - 26, 170, 34]] : []
       for (const [code, v] of [...w.heat.entries()].sort((a, b) => b[1] - a[1])) {
         const c = CENTRE.get(code)
-        if (v > 0.2 && c) {
+        if (w.names && v > 0.2 && c) {
           const at = project(c[0], c[1], c[2])
           if (at[2] > 0.15) {
             const name = countryName(code)
@@ -506,8 +552,10 @@ export function Universe() {
             }
           }
         }
-        // Countries cool down over about twenty seconds.
-        const next = w.paused ? v : v * Math.pow(0.5, dt / 7)
+        // A country stays lit while requests keep coming from it. It dims slowly, and for five
+        // minutes after its last request it never goes fully dark, so active places stay marked.
+        const recent = now - (w.seen.get(code) ?? 0) < 300000
+        const next = w.paused ? v : Math.max(recent ? 0.3 : 0, v * Math.pow(0.5, dt / 25))
         if (next < 0.01) w.heat.delete(code)
         else w.heat.set(code, next)
       }
@@ -566,7 +614,17 @@ export function Universe() {
     const w = world.current
     const moved = w.drag?.moved
     w.drag = null
-    if (moved) return
+    // Turning it by hand takes over: the globe stays exactly where it was put, until "Follow"
+    // or "Spin" is chosen again.
+    if (moved) {
+      w.aim = null
+      w.handsOff = 0
+      if (w.view !== 'still') {
+        setView('still')
+        setByHand(true)
+      }
+      return
+    }
     const code = nearest(e.clientX, e.clientY)
     if (code) setPick({ by: 'country', value: code, title: countryName(code) })
   }
@@ -574,9 +632,28 @@ export function Universe() {
     world.current.zoom = Math.max(0.7, Math.min(2.2, world.current.zoom * (e.deltaY > 0 ? 0.93 : 1.07)))
   }
   const turn = (dYaw: number, dPitch = 0) => {
-    world.current.yaw += dYaw
-    world.current.pitch = Math.max(-1.2, Math.min(1.2, world.current.pitch + dPitch))
+    const w = world.current
+    if (w.view !== 'still') {
+      setView('still')
+      setByHand(true)
+    }
+    w.aim = { yaw: (w.aim?.yaw ?? w.yaw) + dYaw, pitch: Math.max(-1.2, Math.min(1.2, (w.aim?.pitch ?? w.pitch) + dPitch)) }
+    w.handsOff = performance.now() + 8000
   }
+  const zoomBy = (factor: number) => {
+    const w = world.current
+    w.aim = { yaw: w.aim?.yaw ?? w.yaw, pitch: w.aim?.pitch ?? w.pitch, zoom: Math.max(0.7, Math.min(2.4, (w.aim?.zoom ?? w.zoom) * factor)) }
+  }
+  /** Glide to a place and hold there for a while. */
+  const face = (lon: number, lat: number, zoom = 1) => {
+    world.current.aim = { yaw: -lon * DEG, pitch: lat * DEG * 0.85, zoom }
+    world.current.handsOff = performance.now() + 15000
+  }
+  const PLACES: [string, () => void][] = [
+    ['Africa', () => face(20, 3, 1.15)],
+    ['The server', () => config && face(config.server.lon, config.server.lat, 1.25)],
+    ['Whole globe', () => { const w = world.current; w.aim = { yaw: w.aim?.yaw ?? w.yaw, pitch: w.aim?.pitch ?? w.pitch, zoom: 1 } }],
+  ]
 
   if (error) return <Notice kind="error">{error}</Notice>
   const total = counts.page + counts.view + counts.click + counts.search
@@ -617,15 +694,80 @@ export function Universe() {
 
         {/* Controls */}
         <div className="absolute right-3 top-3 flex gap-1.5 sm:right-5 sm:top-4">
-          {([[paused ? Play : Pause, paused ? 'Resume' : 'Pause', () => setPaused((p) => !p)], [RotateCcw, 'Face Africa again', () => { world.current.yaw = -0.45; world.current.pitch = 0.28; world.current.zoom = 1 }], [Maximize2, 'Full screen', () => (document.fullscreenElement ? document.exitFullscreen() : frame.current?.requestFullscreen?.())]] as [typeof Play, string, () => void][]).map(([Icon, label, run]) => (
-            <button key={label} type="button" onClick={run} aria-label={label} title={label} className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white backdrop-blur transition-colors hover:bg-white/15"><Icon className="size-[18px]" /></button>
+          {([[ZoomIn, 'Zoom in', () => zoomBy(1.25)], [ZoomOut, 'Zoom out', () => zoomBy(0.8)], [paused ? Play : Pause, paused ? 'Resume' : 'Pause everything', () => setPaused((p) => !p)], [SlidersHorizontal, panel ? 'Hide the controls' : 'Show the controls', () => setPanel((o) => !o)], [Maximize2, 'Full screen', () => (document.fullscreenElement ? document.exitFullscreen() : frame.current?.requestFullscreen?.())]] as [typeof Play, string, () => void][]).map(([Icon, label, run]) => (
+            <button key={label} type="button" onClick={run} aria-label={label} title={label} aria-pressed={label.includes('controls') ? panel : undefined} className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white backdrop-blur transition-colors hover:bg-white/15 aria-pressed:bg-white aria-pressed:text-ink"><Icon className="size-[18px]" /></button>
           ))}
         </div>
+        {panel && (
+          <div role="group" aria-label="Globe controls" className="scroll-quiet absolute right-3 top-[60px] z-10 max-h-[calc(100%-76px)] w-[min(264px,calc(100%-24px))] overflow-y-auto border border-white/15 bg-[#0a1020]/85 p-3.5 text-[12.5px] backdrop-blur-md sm:right-5 sm:top-[64px]">
+            <div className="flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-mirror">Controls</p><button type="button" onClick={() => setPanel(false)} aria-label="Hide the controls" className="-mr-1 flex size-7 items-center justify-center rounded-full text-mirror hover:bg-white/10 hover:text-white"><X className="size-4" /></button></div>
+
+            <p className="mb-1.5 mt-2.5 text-mirror-light">The globe</p>
+            <div role="radiogroup" aria-label="How the globe moves" className="grid grid-cols-3 gap-1">
+              {([['follow', 'Follow'], ['spin', 'Spin'], ['still', 'Still']] as const).map(([id, label]) => (
+                <button key={id} type="button" role="radio" aria-checked={view === id} onClick={() => { setView(id); setByHand(false); world.current.handsOff = 0 }} className="rounded-full border border-white/20 px-2 py-1.5 font-semibold transition-colors hover:bg-white/10 aria-checked:border-white aria-checked:bg-white aria-checked:text-ink">{label}</button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11.5px] leading-snug text-mirror">{view === 'follow' ? 'Stays on wherever requests are coming from.' : view === 'spin' ? 'Turns slowly, one round in about seven minutes.' : 'Holds where you put it.'}</p>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="grid grid-cols-3 gap-1" aria-label="Turn the globe">
+                <span />
+                <button type="button" onClick={() => turn(0, 0.2)} aria-label="Tilt up" className="flex size-8 items-center justify-center rounded-full border border-white/20 hover:bg-white/10"><ChevronUp className="size-4" /></button>
+                <span />
+                <button type="button" onClick={() => turn(0.3)} aria-label="Turn left" className="flex size-8 items-center justify-center rounded-full border border-white/20 hover:bg-white/10"><ChevronLeft className="size-4" /></button>
+                <button type="button" onClick={() => turn(0, -0.2)} aria-label="Tilt down" className="flex size-8 items-center justify-center rounded-full border border-white/20 hover:bg-white/10"><ChevronDown className="size-4" /></button>
+                <button type="button" onClick={() => turn(-0.3)} aria-label="Turn right" className="flex size-8 items-center justify-center rounded-full border border-white/20 hover:bg-white/10"><ChevronRight className="size-4" /></button>
+              </div>
+              <div className="grid gap-1" aria-label="Zoom">
+                <button type="button" onClick={() => zoomBy(1.25)} aria-label="Zoom in" className="flex h-8 w-[84px] items-center justify-center gap-1.5 rounded-full border border-white/20 font-semibold hover:bg-white/10"><Plus className="size-4" /> Closer</button>
+                <button type="button" onClick={() => zoomBy(0.8)} aria-label="Zoom out" className="flex h-8 w-[84px] items-center justify-center gap-1.5 rounded-full border border-white/20 font-semibold hover:bg-white/10"><Minus className="size-4" /> Further</button>
+              </div>
+            </div>
+
+            <p className="mb-1.5 mt-3 text-mirror-light">Go to</p>
+            <div className="flex flex-wrap gap-1">
+              {PLACES.map(([label, run]) => <button key={label} type="button" onClick={run} className="rounded-full border border-white/20 px-2.5 py-1 font-semibold hover:bg-white/10">{label}</button>)}
+            </div>
+            <select aria-label="Go to a country" value="" onChange={(e) => { const c = GLOBE.find((g) => g[0] === e.target.value); if (c) face(c[2], c[3], 1.5) }} className="mt-1.5 w-full border border-white/20 bg-transparent px-2 py-1.5 font-semibold text-white [&>option]:text-ink">
+              <option value="">A country…</option>
+              {[...GLOBE].sort((a, b) => a[1].localeCompare(b[1])).map((g) => <option key={g[0]} value={g[0]}>{g[1]}</option>)}
+            </select>
+
+            <p className="mb-1.5 mt-3 text-mirror-light">Show</p>
+            <div className="grid grid-cols-2 gap-1">
+              {KINDS.map(([k, name]) => (
+                <button key={k} type="button" aria-pressed={shown[k]} onClick={() => setShown((x) => ({ ...x, [k]: !x[k] }))} className="flex items-center gap-2 rounded-full border border-white/20 px-2.5 py-1 font-semibold opacity-50 transition hover:bg-white/10 aria-pressed:opacity-100">
+                  <span className="size-2.5 flex-none rounded-full" style={{ background: COLOR[k] }} />{name}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid gap-1.5">
+              {([['Country names', names, setNames], ['Routes', routes, setRoutes], ['Replay when quiet', replay, setReplay]] as [string, boolean, (v: boolean) => void][]).map(([label, on, set]) => (
+                <label key={label} className="flex cursor-pointer items-center justify-between gap-3"><span>{label}</span><input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} className="size-4 accent-[#ff5a36]" /></label>
+              ))}
+            </div>
+
+            <p className="mb-1.5 mt-3 text-mirror-light">Speed of requests</p>
+            <div role="radiogroup" aria-label="Speed of requests" className="grid grid-cols-3 gap-1">
+              {([['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] as const).map(([id, label]) => (
+                <button key={id} type="button" role="radio" aria-checked={speed === id} onClick={() => setSpeed(id)} className="rounded-full border border-white/20 px-2 py-1.5 font-semibold transition-colors hover:bg-white/10 aria-checked:border-white aria-checked:bg-white aria-checked:text-ink">{label}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {byHand && view === 'still' && (
+          <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 whitespace-nowrap rounded-full border border-white/20 bg-[#0a1020]/85 py-1.5 pl-4 pr-1.5 text-[12.5px] backdrop-blur-md sm:bottom-6" role="status">
+            You are turning the globe yourself.
+            <button type="button" onClick={() => { setView('follow'); setByHand(false) }} className="rounded-full bg-white px-3 py-1 font-semibold text-ink hover:bg-mirror-light">Follow requests again</button>
+          </div>
+        )}
 
         {/* By kind */}
         <ul className="pointer-events-none absolute bottom-4 left-4 grid gap-1.5 sm:bottom-6 sm:left-6" aria-label="Requests drawn, by kind">
           {KINDS.map(([k, name]) => (
-            <li key={k} className="flex items-center gap-2.5 text-[13px]">
+            <li key={k} className={`flex items-center gap-2.5 text-[13px] ${shown[k] ? '' : 'opacity-35'}`}>
               <span className="size-2.5 rounded-full" style={{ background: COLOR[k], boxShadow: `0 0 10px ${COLOR[k]}` }} />
               <span className="w-[68px] text-mirror-light">{name}</span>
               <b className="tabular-nums">{counts[k].toLocaleString('en')}</b>
@@ -635,7 +777,7 @@ export function Universe() {
         </ul>
 
         {/* Right now */}
-        <div className="pointer-events-none absolute bottom-4 right-4 hidden w-[250px] sm:block sm:bottom-6 sm:right-6">
+        <div className={`pointer-events-none absolute bottom-4 hidden w-[250px] sm:block sm:bottom-6 ${panel ? 'right-[300px] max-lg:hidden' : 'right-4 sm:right-6'}`}>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-right">
             <div><dt className="text-[11px] uppercase tracking-[0.1em] text-mirror">On the site now</dt><dd className="text-[30px] font-extrabold leading-none tracking-[-0.03em] tabular-nums">{presence ? presence.total.toLocaleString('en') : '–'}</dd></div>
             <div><dt className="text-[11px] uppercase tracking-[0.1em] text-mirror">Time on a page</dt><dd className="text-[30px] font-extrabold leading-none tracking-[-0.03em] tabular-nums">{time != null ? duration(time) : '–'}</dd></div>
@@ -651,8 +793,7 @@ export function Universe() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <p className="min-w-0 flex-1 text-[12.5px] text-muted">Drag to turn, scroll to zoom, click a country for its requests. {config && !config.server.known && <>The server’s place is assumed: set <code>SERVER_LOCATION</code> on the API (for example <code>52.37,4.90,Amsterdam</code>). </>}Readers who allowed measurement only; nobody is identified.</p>
-        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold"><input type="checkbox" checked={replay} onChange={(e) => setReplay(e.target.checked)} className="size-4 accent-ink" /> Replay the last 24 hours when quiet</label>
+        <p className="min-w-0 flex-1 text-[12.5px] text-muted">Drag the globe to turn it yourself (it then stays where you leave it), use the zoom buttons or scroll to zoom, and click a country for its requests. The controls (top right) choose how the globe moves, where it looks and what it shows. {config && !config.server.known && <>The server’s place is assumed: set <code>SERVER_LOCATION</code> on the API (for example <code>52.37,4.90,Amsterdam</code>). </>}Readers who allowed measurement only; nobody is identified.</p>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">

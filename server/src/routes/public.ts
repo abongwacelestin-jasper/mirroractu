@@ -14,7 +14,7 @@ import { newsroomAddresses, sendLater, siteUrl, deskUrl } from '../mail/send'
 import { confirmSubscription, offerFacts, ref, requestSubscription, subscriptionStatus, unsubscribe } from '../mail/service'
 import * as T from '../mail/templates'
 import { rates } from '../rates'
-import { webTrends } from '../webtrends/engine'
+import { searchWebTrends, webTrends } from '../webtrends/engine'
 import { publish } from '../bus'
 import { bodyHtml, feed, headHtml, newsSitemap, robotsTxt, sitemap } from '../seo'
 import { resendWebhook } from '../mail/webhook'
@@ -87,6 +87,33 @@ export async function publicRoutes(app: FastifyInstance) {
     const { country } = z.object({ country: z.string().max(3).optional() }).parse(req.query)
     reply.header('Cache-Control', 'public, max-age=60')
     return webTrends(country ?? countryFromHeaders(req.headers) ?? undefined)
+  })
+
+  /**
+   * Search across what is live: stories as they stand in the database this second (so one
+   * published a minute ago is found), the wire of the last two weeks, and the outside trend
+   * lists. The words are sent in the body, not the address, so they are never written to the
+   * server's request log; nothing about the search is stored here.
+   */
+  app.post('/search', { config: { rateLimit: { max: 90, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const body = z.object({ q: z.string().trim().min(2).max(80), country: z.string().max(3).optional() }).safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: 'Search for at least two letters.' })
+    const terms = body.data.q.toLowerCase().split(/[^\p{L}\p{N}$%.]+/u).filter((t) => t.length > 0).slice(0, 8)
+    if (!terms.length) return { stories: [], wire: [], web: [] }
+    const like = terms.map((t) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+    const country = body.data.country && /^[A-Za-z]{2}$/.test(body.data.country) ? body.data.country.toUpperCase() : countryFromHeaders(req.headers)
+    const [stories, wire, web] = await Promise.all([
+      q(
+        `SELECT id, slug, data->>'h' AS h, data->>'st' AS st, data->'cats'->>0 AS cat, to_char(story_date, 'YYYY-MM-DD') AS d FROM stories
+         WHERE published AND (data->>'h') || ' ' || (data->>'st') || ' ' || (data->>'what') || ' ' || coalesce(data->>'tags', '') || ' ' || coalesce(data->>'sub', '') ILIKE ALL($1)
+         ORDER BY (data->>'h') ILIKE ALL($1) DESC, story_date DESC LIMIT 12`,
+        [like]
+      ),
+      q("SELECT id, at, desk, cat, text, story_id, kind FROM wire_items WHERE at > now() - interval '14 days' AND text || ' ' || desk ILIKE ALL($1) ORDER BY at DESC LIMIT 6", [like]),
+      searchWebTrends(terms, country),
+    ])
+    reply.header('Cache-Control', 'no-store')
+    return { stories, wire: wire.map((w) => ({ id: Number(w.id), at: w.at, desk: w.desk, cat: w.cat, text: w.text, storyId: w.story_id ?? undefined, kind: w.kind })), web }
   })
 
   app.get('/wire', async (req) => {

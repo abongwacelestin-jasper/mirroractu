@@ -14,6 +14,7 @@ import { TREND_TOPICS, formatSeconds } from '@/data/trends'
 import { DEFAULT_FILTERS, SearchFilters, SearchType, runSearch, searchPath, termsOf } from '@/lib/search'
 import { useStoredValue } from '@/lib/store'
 import { WIRE_KIND_LABEL, useWire } from '@/live/feed'
+import { LiveResults, useLiveSearch } from '@/live/search'
 
 const TYPE_LABEL: Record<SearchType, string> = { all: 'All', stories: 'Stories', videos: 'Videos', photos: 'Photos', topics: 'Topics', dates: 'Dates', offers: 'Offers' }
 const TYPE_ORDER: SearchType[] = ['all', 'stories', 'videos', 'photos', 'topics', 'dates', 'offers']
@@ -59,7 +60,13 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
 
   const terms = useMemo(() => termsOf(query), [query])
   const results = useMemo(() => runSearch(query, filters), [query, filters])
-  useSearchTracking(query, results.counts.all)
+  // The same words, searched on the server too: stories as they stand this second, two weeks
+  // of the wire, and what outside sources show is trending.
+  const live = useLiveSearch(query)
+  const have = new Set(results.stories.map((x) => x.story.id))
+  const fresh = (live.results?.stories ?? []).filter((x) => !have.has(x.id))
+  const liveCount = fresh.length + (live.results?.wire.length ?? 0) + (live.results?.web.length ?? 0)
+  useSearchTracking(query, results.counts.all + liveCount)
   const set = (patch: Partial<SearchFilters>) => onFilters({ ...filters, ...patch })
   const filtersOn = filters.desk !== 'all' || !!filters.from || !!filters.to || filters.sort !== 'relevance' || filters.openOnly
 
@@ -97,7 +104,7 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
 
   const show = (t: SearchType) => filters.type === 'all' || filters.type === t
   const cap = (n: number) => (dialog && filters.type === 'all' ? n : 999)
-  const none = query.trim() !== '' && results.counts.all === 0 && results.photos.length === 0
+  const none = query.trim() !== '' && results.counts.all === 0 && results.photos.length === 0 && liveCount === 0 && !live.loading
 
   return (
     <div ref={root} onKeyDown={onKeyDown}>
@@ -324,7 +331,7 @@ export function SearchPanel({ query, onQuery, filters, onFilters, onOpenResult, 
           </Group>
         )}
 
-        {show('all') && query.trim() && <WireMatches terms={terms} onOpen={opened} />}
+        {show('all') && query.trim() && (live.results ? <LiveMatches live={live.results} fresh={fresh} terms={terms} onOpen={opened} /> : <WireMatches terms={terms} onOpen={opened} />)}
 
         {show('dates') && results.dates.length > 0 && (query.trim() || filters.type === 'dates') && (
           <Group title="Coming up" count={results.dates.length} icon={<CalendarDays className="size-4" />}>
@@ -375,6 +382,52 @@ function Group({ title, count, icon, children }: { title: string; count?: number
 }
 
 /** Live wire updates that match the search, newest first: the "happening right now" results. */
+const pulse = <span className="relative flex size-2"><span className="absolute inset-0 rounded-full bg-signal opacity-60 motion-safe:animate-ping" /><span className="relative size-2 rounded-full bg-signal" /></span>
+
+/** What the server found in live data: stories newer than this page, the wire, and outside trends. */
+function LiveMatches({ live, fresh, terms, onOpen }: { live: LiveResults; fresh: LiveResults['stories']; terms: string[]; onOpen: () => void }) {
+  return (
+    <>
+      {fresh.length > 0 && (
+        <Group title="Just published" count={fresh.length} icon={pulse}>
+          {fresh.map((x) => (
+            <Link key={x.id} data-result to={`/story/${x.slug}`} onClick={onOpen} className="group block border-b border-rule py-2.5 outline-none focus-visible:bg-paper">
+              <span className="text-[12.5px] font-semibold capitalize text-muted">{x.cat ?? 'News'} · <span className="tabular-nums">{x.d}</span></span>
+              <span className="block text-[16px] font-semibold leading-snug decoration-signal decoration-2 underline-offset-4 group-hover:underline"><Highlight text={x.h} terms={terms} /></span>
+              <span className="line-clamp-1 text-[13.5px] text-muted">{x.st}</span>
+            </Link>
+          ))}
+        </Group>
+      )}
+      {live.wire.length > 0 && (
+        <Group title="On the wire" count={live.wire.length} icon={pulse}>
+          {live.wire.map((w) => (
+            <Link key={w.id} data-result to={w.storyId ? storyPath(w.storyId) : '/live'} onClick={onOpen} className="group grid grid-cols-[64px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 outline-none focus-visible:bg-paper">
+              <span className="pt-0.5 font-mono text-xs tabular-nums text-muted">{new Date(w.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}<br />{new Date(w.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>
+                <span className={twMerge('text-[12.5px] font-semibold', w.kind === 'confirmed' ? 'text-signal' : 'text-muted')}>{w.desk} · {WIRE_KIND_LABEL[w.kind as keyof typeof WIRE_KIND_LABEL] ?? w.kind}</span>
+                <span className="block text-[15px] leading-snug decoration-signal decoration-2 underline-offset-4 group-hover:underline"><Highlight text={w.text} terms={terms} /></span>
+              </span>
+            </Link>
+          ))}
+        </Group>
+      )}
+      {live.web.length > 0 && (
+        <Group title="Trending on the web" count={live.web.length} icon={<TrendingUp className="size-4" />}>
+          <p className="pb-1 text-[12.5px] text-muted"><b className="text-ink">Not MirrorActu reporting.</b> From outside sources, unchecked. Each link opens another site.</p>
+          {live.web.map((x, i) => (
+            <div key={x.url + i} className="border-b border-rule py-2.5">
+              <a data-result href={x.url} target="_blank" rel="noopener noreferrer nofollow" data-track={`webtrend:${x.source}`} className="text-[15.5px] font-semibold leading-snug decoration-signal decoration-2 underline-offset-4 outline-none hover:underline focus-visible:underline" translate="no"><Highlight text={x.title} terms={terms} /></a>
+              <p className="text-[12.5px] text-muted">{x.credit.name} · {x.note}{x.places.length > 1 ? ` · in ${x.places.slice(0, 3).join(', ')}${x.places.length > 3 ? ` and ${x.places.length - 3} more` : ''}` : ''}</p>
+              {x.headline && <p className="truncate text-[12.5px] text-muted"><a href={x.headline.url} target="_blank" rel="noopener noreferrer nofollow" className="underline decoration-rule underline-offset-2 hover:text-ink" translate="no"><Highlight text={x.headline.title} terms={terms} /></a>{x.headline.publisher && ` · ${x.headline.publisher}`}</p>}
+            </div>
+          ))}
+        </Group>
+      )}
+    </>
+  )
+}
+
 function WireMatches({ terms, onOpen }: { terms: string[]; onOpen: () => void }) {
   const { items } = useWire({ max: 40 })
   const hits = items.filter((w) => terms.every((t) => `${w.text} ${w.desk}`.toLowerCase().includes(t))).slice(0, 3)

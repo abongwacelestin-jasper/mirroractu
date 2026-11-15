@@ -363,6 +363,10 @@ going live, add the site in Google Search Console and Bing Webmaster Tools and s
   country, arcs over the globe and lands on the server, coloured by kind (page, story, click,
   search). Countries warm up as they get busy. When the site is quiet the last 24 hours are
   replayed, marked as a replay. Drag to turn, scroll to zoom, click a country for its requests.
+  By default the globe **follows**: it turns to face wherever requests are coming from now and
+  stays there, and a country stays lit for five minutes after its last request. The controls
+  panel chooses Follow / Spin / Still, turns and zooms, jumps to Africa, the server or any
+  country, switches kinds of request, names, routes and replay on or off, and sets the speed.
   Everything it shows is also in words beside it. The server's position comes from Railway's
   region, or `SERVER_LOCATION="lat,lon,Label"`.
 - **Visits** (dashboard → Visits, `src/admin/visits.tsx`). One visit at a time: the page the
@@ -383,6 +387,21 @@ How this stays within what readers agreed to:
   Control. The cookie notice describes it, and the consent version was raised (to 4), so every
   reader is asked again.
 - The dashboard is never sent an IP address or the daily reader code used for counting.
+
+## Search on live data
+
+The search box answers at once from what the page already holds, and a moment later adds what
+the server finds in live data (`POST /api/v1/search`, `src/live/search.ts`):
+
+- **Just published:** stories as they stand in the database this second, including any
+  published since the page was opened.
+- **On the wire:** the last two weeks of wire updates, not only the forty on screen.
+- **Trending on the web:** matching items from the Google Trends, GDELT and Wikipedia lists,
+  the reader's country first, labelled "Not MirrorActu reporting" with the source named.
+
+The words are sent in the request body, so they are not written to the server's request log,
+and the endpoint stores nothing. (Search words are recorded for the dashboard only for readers
+who allowed measurement, as before.)
 
 ## Real time (WebSockets)
 

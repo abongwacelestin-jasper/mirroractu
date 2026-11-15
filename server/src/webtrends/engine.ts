@@ -295,6 +295,39 @@ export async function webTrends(code: string | undefined): Promise<{ country: st
   })
 }
 
+/* ---------- Search ---------- */
+
+export type WebHit = WebTrend & { source: string; credit: { name: string; url: string }; places: string[] }
+
+/**
+ * Items from the outside lists that contain every search word, for the site's search. The same
+ * thing found in several countries is one result that names them.
+ */
+export async function searchWebTrends(terms: string[], country: string | null): Promise<WebHit[]> {
+  if (!terms.length) return []
+  const index = await cached('webtrends', 'search-index', 60, async () => {
+    const on = new Set((await q<{ source: string }>('SELECT source FROM web_trend_sources WHERE enabled')).map((r) => r.source))
+    const blocked = await blockedTerms()
+    const rows = await q<Row & { age_s: number }>("SELECT source, country, items, fetched_at, extract(epoch FROM now() - fetched_at)::int AS age_s FROM web_trend_feeds WHERE fetched_at IS NOT NULL AND jsonb_array_length(items) > 0")
+    return rows
+      .filter((r) => on.has(r.source) && config.webTrendsSources.includes(r.source) && r.age_s < (sourceById(r.source)?.keepS ?? 0))
+      .flatMap((r) => clean(r.items, blocked).map((i) => ({ ...i, source: r.source, country: r.country })))
+  })
+  const merged = new Map<string, WebHit & { mine: boolean }>()
+  for (const i of index) {
+    const text = `${i.title} ${i.headline?.title ?? ''}`.toLowerCase()
+    if (!terms.every((t) => text.includes(t))) continue
+    const k = `${i.source}:${key(i.title)}`
+    const hit = merged.get(k) ?? { title: i.title, url: i.url, note: i.note, weight: 0, headline: i.headline, source: i.source, credit: sourceById(i.source)!.credit, places: [], mine: false }
+    hit.weight += i.weight
+    if (i.country) hit.places.push(getCountry(i.country).name)
+    if (i.country && i.country === country) hit.mine = true
+    merged.set(k, hit)
+  }
+  // The reader's own country first, then what is in the most places.
+  return [...merged.values()].sort((a, b) => Number(b.mine) - Number(a.mine) || b.places.length - a.places.length || b.weight - a.weight).slice(0, 8).map(({ mine: _m, ...h }) => ({ ...h, places: [...new Set(h.places)].slice(0, 6) }))
+}
+
 /* ---------- For the dashboard ---------- */
 
 export async function engineStatus() {
