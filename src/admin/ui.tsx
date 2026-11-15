@@ -250,3 +250,77 @@ export function RankBars({ rows, unit, empty = 'Nothing to show yet.' }: { rows:
     </ol>
   )
 }
+
+/* ---------- Selecting several rows and acting on them ---------- */
+
+/** Which rows are ticked. Rows that are no longer on screen (filtered out, deleted) drop out by themselves. */
+export function useSelection<T extends string | number>(visible: T[]) {
+  const [picked, setPicked] = React.useState<Set<T>>(new Set())
+  const key = visible.join('|')
+  React.useEffect(() => {
+    setPicked((p) => {
+      const on = new Set(visible)
+      const kept = [...p].filter((id) => on.has(id))
+      return kept.length === p.size ? p : new Set(kept)
+    })
+  }, [key])
+  return {
+    ids: [...picked],
+    count: picked.size,
+    has: (id: T) => picked.has(id),
+    toggle: (id: T) => setPicked((p) => {
+      const next = new Set(p)
+      if (!next.delete(id)) next.add(id)
+      return next
+    }),
+    all: visible.length > 0 && picked.size === visible.length,
+    toggleAll: () => setPicked((p) => (p.size === visible.length ? new Set() : new Set(visible))),
+    clear: () => setPicked(new Set()),
+  }
+}
+
+/** A tick box big enough for a thumb. */
+export function Check({ checked, onChange, label, className }: { checked: boolean; onChange: () => void; label: string; className?: string }) {
+  return (
+    <label className={twMerge('flex size-10 flex-none cursor-pointer items-center justify-center', className)}>
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={label} className="size-[18px] cursor-pointer accent-ink" />
+    </label>
+  )
+}
+
+/** A button that asks once more before doing something that cannot be undone. */
+export function ConfirmBtn({ label, question, onConfirm, tone = 'danger', disabled, size = 'sm' }: { label: React.ReactNode; question: string; onConfirm: () => void | Promise<unknown>; tone?: 'danger' | 'line' | 'solid'; disabled?: boolean; size?: 'sm' | 'md' }) {
+  const [asking, setAsking] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  if (!asking) return <Btn size={size} tone={tone} disabled={disabled} onClick={() => setAsking(true)}>{label}</Btn>
+  return (
+    <span role="alertdialog" aria-label={question} className="inline-flex flex-wrap items-center gap-2 border-l-[3px] border-[#b3261e] bg-[#fdecea] px-2.5 py-1.5 text-[13px] text-ink">
+      <b>{question}</b>
+      <Btn size="sm" tone="danger" disabled={busy} onClick={async () => { setBusy(true); try { await onConfirm() } finally { setBusy(false); setAsking(false) } }}>Yes</Btn>
+      <Btn size="sm" tone="ghost" disabled={busy} onClick={() => setAsking(false)}>No</Btn>
+    </span>
+  )
+}
+
+/**
+ * The bar above a list: tick everything, and, once something is ticked, what can be done with it.
+ * It stays in view while the list scrolls.
+ */
+export function BulkBar({ selection, total, noun, children, note }: { selection: { count: number; all: boolean; toggleAll: () => void; clear: () => void }; total: number; noun: [one: string, many: string]; children?: React.ReactNode; note?: string }) {
+  if (total === 0) return null
+  return (
+    <div className={twMerge('sticky top-0 z-10 flex min-h-[52px] flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule px-2 py-1.5 sm:px-3', selection.count ? 'bg-ink text-white' : 'bg-white')}>
+      <Check checked={selection.all} onChange={selection.toggleAll} label={selection.all ? 'Untick all' : `Tick all ${total}`} />
+      {selection.count === 0 ? (
+        <span className="text-[13px] text-muted">Tick rows to change or delete several at once.</span>
+      ) : (
+        <>
+          <span className="text-[13.5px] font-semibold tabular-nums" role="status">{selection.count} {selection.count === 1 ? noun[0] : noun[1]} ticked</span>
+          <span className="flex flex-wrap items-center gap-2 [&>button]:border-white/40 [&>button:not(:hover)]:bg-transparent [&>button:not(:hover)]:text-white">{children}</span>
+          <button type="button" onClick={selection.clear} className="ml-auto px-2 text-[13px] font-semibold text-mirror-light underline underline-offset-2 hover:text-white">Clear</button>
+          {note && <span className="basis-full pl-12 text-[12px] text-mirror-light">{note}</span>}
+        </>
+      )}
+    </div>
+  )
+}

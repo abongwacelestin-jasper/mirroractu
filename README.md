@@ -356,6 +356,27 @@ Links are built from the **first** address in `SITE_ORIGIN`, so put the real dom
 going live, add the site in Google Search Console and Bing Webmaster Tools and submit
 `/sitemap.xml` and `/news-sitemap.xml`.
 
+## Dashboard: navigation, bulk actions and resets
+
+- **Top bar.** *Go to…* (also Ctrl/⌘ K) finds any page, action or story from anywhere; *Actions*
+  holds the common jobs; the account menu has sign-out. Below 1024px a strip under the top bar
+  lists every page.
+- **Bulk actions.** Tick rows (or tick all) in Stories, Live wire, Inbox, Subscribers and sent
+  editions, then act on them together. Anything that deletes asks once more first.
+
+| Where | Actions | Who |
+|---|---|---|
+| Stories | Publish, take off the site, delete | Delete: administrators |
+| Live wire | Remove | Staff |
+| Inbox: reports, enquiries | Delete (with the reader's address) | Administrators |
+| Subscribers | Resend confirmation, unsubscribe, delete | Administrators |
+| Email → Sent | Use an edition again, reset one stuck on "Sending", delete records, clear the log | Administrators (use again: staff) |
+| Staff | New first password (also unlocks), delete account | Administrators |
+| Web trends | Sync a source or all, resync from empty, lift a pause, recalculate newsroom trends | Resync and lift: administrators |
+
+Every one of these is written to the audit log. Sync never fetches at once: it queues the lists
+and the engine works through them at each source's pace.
+
 ## Trending on the web
 
 Beside the newsroom's own trends, the Trends page shows **Trending on the web**: what outside

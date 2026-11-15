@@ -11,7 +11,7 @@ import { HAS_SITE_LINK, SITE_URL, adminPath } from '@/lib/target'
 import { OverviewData, PasswordInput, useAdmin } from './AdminApp'
 
 type OverviewTrend = OverviewData['trends'][number]
-import { Avatar, Btn, DayBars, Empty, Field, Kpi, Notice, Panel, Pill, RankBars, Segmented, ago, inputClass, when } from './ui'
+import { Avatar, Btn, BulkBar, Check, ConfirmBtn, DayBars, Empty, Field, Kpi, Notice, Panel, Pill, RankBars, Segmented, ago, inputClass, useSelection, when } from './ui'
 
 /** Load something from the API, with a way to load it again. */
 function useLoad<T>(path: string) {
@@ -189,6 +189,12 @@ export function Stories() {
   const [status, setStatus] = useState<'all' | 'published' | 'unpublished'>('all')
   const [desk, setDesk] = useState<CategoryId | 'all'>('all')
   const creating = params.get('new') === '1'
+  // "Go to" in the top bar opens a story for editing by its id.
+  const wanted = params.get('edit')
+  useEffect(() => {
+    const found = wanted && data?.stories.find((x) => x.id === wanted)
+    if (found) setEditing(found)
+  }, [wanted, data])
 
   const close = () => {
     setEditing(null)
@@ -205,6 +211,18 @@ export function Stories() {
         .filter((s) => `${s.h} ${s.st} ${s.sub} ${s.tags}`.toLowerCase().includes(filter.trim().toLowerCase())),
     [all, status, desk, filter]
   )
+
+  const selection = useSelection(list.map((s) => s.id))
+  const [bulkNote, setBulkNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const bulk = (action: 'publish' | 'unpublish' | 'delete') =>
+    api<{ changed: number }>('/admin/stories/bulk', { body: { ids: selection.ids, action } })
+      .then((r) => {
+        setBulkNote({ kind: 'ok', text: `${r.changed} ${r.changed === 1 ? 'story' : 'stories'} ${action === 'delete' ? 'deleted' : action === 'publish' ? 'published' : 'taken off the site'}.` })
+        selection.clear()
+        reload()
+        reloadShared()
+      })
+      .catch((e: ApiError) => setBulkNote({ kind: 'error', text: e.message }))
 
   if (error) return <Notice kind="error">{error}</Notice>
   if (creating || editing) return <StoryForm story={creating ? null : editing} isAdmin={user.role === 'admin'} onDone={close} />
@@ -231,11 +249,19 @@ export function Stories() {
           <Empty title="No stories match.">Try another word, desk or status.</Empty>
         ) : (
           <ul>
+            <li>
+              <BulkBar selection={selection} total={list.length} noun={['story', 'stories']}>
+                <Btn size="sm" tone="line" onClick={() => bulk('publish')}>Publish</Btn>
+                <Btn size="sm" tone="line" onClick={() => bulk('unpublish')}>Take off the site</Btn>
+                {user.role === 'admin' && <ConfirmBtn label="Delete" question={`Delete ${selection.count} for good?`} onConfirm={() => bulk('delete')} />}
+              </BulkBar>
+            </li>
             {list.map((s) => {
               const m = storyMedia(s.id)
               return (
-                <li key={s.id} className="border-b border-rule last:border-b-0">
-                  <button type="button" onClick={() => setEditing(s)} className="group grid w-full grid-cols-[64px_minmax(0,1fr)] items-start gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-paper/60 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:px-5">
+                <li key={s.id} className={`flex items-start border-b border-rule last:border-b-0 ${selection.has(s.id) ? 'bg-paper' : ''}`}>
+                  <Check checked={selection.has(s.id)} onChange={() => selection.toggle(s.id)} label={`Tick: ${s.h}`} className="ml-2 mt-3 sm:ml-3" />
+                  <button type="button" onClick={() => setEditing(s)} className="group grid min-w-0 flex-1 grid-cols-[64px_minmax(0,1fr)] items-start gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-paper/60 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:px-5">
                     <span className="block aspect-[4/3] overflow-hidden bg-paper-2">
                       {m ? <img src={m.src} alt="" loading="lazy" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-muted"><FileText className="size-5" /></span>}
                     </span>
@@ -263,6 +289,7 @@ export function Stories() {
           </ul>
         )}
       </Panel>
+      {bulkNote && <Notice kind={bulkNote.kind}>{bulkNote.text}</Notice>}
       <p className="text-[12.5px] text-muted">{list.length} of {all.length} stories. A story’s address never changes when its headline does.</p>
     </div>
   )
@@ -426,6 +453,7 @@ export function Wire() {
   const stories = useLoad<{ stories: AdminStory[] }>('/admin/stories').data?.stories ?? []
   const [f, setF] = useState({ cat: 'world' as CategoryId, kind: 'update', text: '', storyId: '' })
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const wireSel = useSelection((data?.items ?? []).map((w) => w.id))
   const post = async () => {
     setMessage(null)
     try {
@@ -477,8 +505,14 @@ export function Wire() {
       <Panel kicker="Newest first" title="On the wire" flush>
         {!data ? <div className="shimmer h-[300px] bg-paper-2" /> : data.items.length === 0 ? <Empty title="The wire is empty.">File the first update.</Empty> : (
           <ol>
+            <li>
+              <BulkBar selection={wireSel} total={data.items.length} noun={['update', 'updates']}>
+                <ConfirmBtn label="Remove" question={`Remove ${wireSel.count} from the wire?`} onConfirm={() => api('/admin/wire/bulk', { body: { ids: wireSel.ids, action: 'delete' } }).then(() => { wireSel.clear(); reload(); reloadShared() })} />
+              </BulkBar>
+            </li>
             {data.items.map((w) => (
-              <li key={w.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-t border-rule px-4 py-3 first:border-t-0 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:px-5">
+              <li key={w.id} className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 border-t border-rule py-3 pl-1 pr-4 sm:grid-cols-[auto_92px_minmax(0,1fr)_auto] sm:pl-2 sm:pr-5 ${wireSel.has(w.id) ? 'bg-paper' : ''}`}>
+                <Check checked={wireSel.has(w.id)} onChange={() => wireSel.toggle(w.id)} label={`Tick: ${w.text}`} className="-mt-2" />
                 <span className="hidden font-mono text-[12px] tabular-nums text-muted sm:block">{when(w.at)}</span>
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2 text-[12.5px]"><span className="font-semibold capitalize">{w.desk}</span><Pill tone={KIND_TONE[w.kind]} className="capitalize">{w.kind}</Pill><span className="text-muted sm:hidden">{ago(w.at)}</span></span>
@@ -534,6 +568,10 @@ export function InboxView() {
   const done = corrections.filter((c) => c.status === 'corrected' || c.status === 'no_change')
   const list = tab === 'waiting' ? waiting : done
   const n = enquiries.data?.enquiries.length ?? 0
+  const { user } = useAdmin()
+  const admin = user.role === 'admin'
+  const reportSel = useSelection(list.map((c) => c.id))
+  const enquirySel = useSelection((enquiries.data?.enquiries ?? []).map((e) => e.id))
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -544,8 +582,17 @@ export function InboxView() {
             <Empty title={tab === 'waiting' ? 'Nothing is waiting.' : 'Nothing handled yet.'}>{tab === 'waiting' ? 'Corrections readers report from any story appear here.' : 'Reports marked Corrected or No change needed move here.'}</Empty>
           ) : (
             <ul>
+              {admin && (
+                <li>
+                  <BulkBar selection={reportSel} total={list.length} noun={['report', 'reports']} note="Deleting removes the report and the reader’s address for good. The reader is not told.">
+                    <ConfirmBtn label="Delete" question={`Delete ${reportSel.count} for good?`} onConfirm={() => api('/admin/corrections/bulk', { body: { ids: reportSel.ids, action: 'delete' } }).then(() => { reportSel.clear(); reload() })} />
+                  </BulkBar>
+                </li>
+              )}
               {list.map((c) => (
-                <li key={c.id} className="border-t border-rule px-4 py-4 first:border-t-0 sm:px-5">
+                <li key={c.id} className={`flex items-start border-t border-rule ${reportSel.has(c.id) ? 'bg-paper' : ''}`}>
+                  {admin && <Check checked={reportSel.has(c.id)} onChange={() => reportSel.toggle(c.id)} label="Tick this report" className="ml-1 mt-2 sm:ml-2" />}
+                  <div className={`min-w-0 flex-1 py-4 pr-4 sm:pr-5 ${admin ? '' : 'pl-4 sm:pl-5'}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
                       <Pill tone={STATUS[c.status][1]}>{STATUS[c.status][0]}</Pill>
@@ -566,6 +613,7 @@ export function InboxView() {
                   {c.note && tab === 'done' && <p className="mt-2 border-l-[3px] border-rule pl-3 text-[13.5px] text-muted"><b className="text-ink">Editor’s note:</b> {c.note}</p>}
                   {tab === 'waiting' && <CloseReport correction={c} onDone={reload} />}
                   {c.handled_by_name && <p className="mt-2 text-[12px] text-muted">Last handled by {c.handled_by_name}</p>}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -575,9 +623,17 @@ export function InboxView() {
         <Panel flush>
           {n === 0 ? <Empty title="No enquiries yet.">When a reader asks about an advertiser offer it appears here.</Empty> : (
             <ul>
+              {admin && (
+                <li>
+                  <BulkBar selection={enquirySel} total={n} noun={['enquiry', 'enquiries']}>
+                    <ConfirmBtn label="Delete" question={`Delete ${enquirySel.count} for good?`} onConfirm={() => api('/admin/enquiries/bulk', { body: { ids: enquirySel.ids, action: 'delete' } }).then(() => { enquirySel.clear(); enquiries.reload() })} />
+                  </BulkBar>
+                </li>
+              )}
               {enquiries.data?.enquiries.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule px-4 py-3 first:border-t-0 sm:px-5">
-                  <span className="min-w-0">
+                <li key={e.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule py-3 pr-4 sm:pr-5 ${admin ? 'pl-1 sm:pl-2' : 'pl-4 sm:pl-5'} ${enquirySel.has(e.id) ? 'bg-paper' : ''}`}>
+                  {admin && <Check checked={enquirySel.has(e.id)} onChange={() => enquirySel.toggle(e.id)} label="Tick this enquiry" />}
+                  <span className="min-w-0 flex-1">
                     <span className="block text-[15px] font-semibold capitalize">{e.offer_id.replace(/-/g, ' ')}</span>
                     <span className="block text-[13px] capitalize text-muted">{e.advertiser_id.replace(/-/g, ' ')}</span>
                   </span>
@@ -604,7 +660,19 @@ export function Subscribers() {
   if (error) return <Notice kind="error">{error}</Notice>
   const all = data?.subscribers ?? []
   const week = all.filter((s) => Date.now() - new Date(s.created_at).getTime() < 7 * 86400000).length
-  const list = all.filter((s) => s.email.includes(filter.trim().toLowerCase()))
+  const [show, setShow] = useState<'all' | 'confirmed' | 'pending' | 'unsubscribed' | 'bounced'>('all')
+  const list = all.filter((s) => s.email.includes(filter.trim().toLowerCase())).filter((s) => show === 'all' || s.status === show)
+  const selection = useSelection(list.map((s) => s.id))
+  const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const bulk = (action: 'delete' | 'unsubscribe' | 'resend') =>
+    api<{ changed: number }>('/admin/subscribers/bulk', { body: { ids: selection.ids, action } })
+      .then((r) => {
+        setNote({ kind: 'ok', text: action === 'resend' ? `Confirmation email sent to ${r.changed}. Only addresses still waiting are emailed, and not twice within three minutes.` : `${r.changed} ${r.changed === 1 ? 'address' : 'addresses'} ${action === 'delete' ? 'deleted' : 'unsubscribed'}.` })
+        selection.clear()
+        reload()
+        mail.reload()
+      })
+      .catch((e: ApiError) => setNote({ kind: 'error', text: e.message }))
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -622,6 +690,8 @@ export function Subscribers() {
           <Btn tone="line" size="sm" onClick={() => api<{ sent: number }>('/admin/subscribers/confirm-waiting', { body: {} }).then((r) => { setAsked(`Confirmation sent to ${r.sent}.`); mail.reload(); reload() }).catch((e: ApiError) => setAsked(e.message))}>Send them the confirmation email{neverAsked > 50 ? ' (50 at a time)' : ''}</Btn>
         </div>
       )}
+      {note && <Notice kind={note.kind}>{note.text}</Notice>}
+      <Segmented label="Status" value={show} onChange={setShow} options={[['all', 'All', all.length], ['confirmed', 'Confirmed', all.filter((s) => s.status === 'confirmed').length], ['pending', 'Waiting', all.filter((s) => s.status === 'pending').length], ['unsubscribed', 'Unsubscribed', all.filter((s) => s.status === 'unsubscribed').length], ['bounced', 'Bounced', all.filter((s) => s.status === 'bounced').length]]} />
       <Panel
         title="Sign-ups"
         flush
@@ -634,9 +704,19 @@ export function Subscribers() {
       >
         {!data ? <div className="shimmer h-[200px] bg-paper-2" /> : list.length === 0 ? <Empty title="No sign-ups to show.">Readers sign up from the footer and the Subscribe button.</Empty> : (
           <ul>
+            {user.role === 'admin' && (
+              <li>
+                <BulkBar selection={selection} total={list.length} noun={['address', 'addresses']} note="Unsubscribe stops the emails and keeps a record. Delete removes the address completely, for a reader who asks to be forgotten.">
+                  <Btn size="sm" tone="line" onClick={() => bulk('resend')}>Resend confirmation</Btn>
+                  <Btn size="sm" tone="line" onClick={() => bulk('unsubscribe')}>Unsubscribe</Btn>
+                  <ConfirmBtn label="Delete" question={`Delete ${selection.count} for good?`} onConfirm={() => bulk('delete')} />
+                </BulkBar>
+              </li>
+            )}
             {list.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule px-4 py-3 sm:px-5">
-                <span className="min-w-0 truncate text-[14.5px] font-semibold">{s.email}</span>
+              <li key={s.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule py-2 pr-4 sm:pr-5 ${user.role === 'admin' ? 'pl-1 sm:pl-2' : 'pl-4 sm:pl-5'} ${selection.has(s.id) ? 'bg-paper' : ''}`}>
+                {user.role === 'admin' && <Check checked={selection.has(s.id)} onChange={() => selection.toggle(s.id)} label={`Tick ${s.email}`} />}
+                <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold">{s.email}</span>
                 <span className="flex items-center gap-2.5 text-[12.5px] text-muted"><Pill tone={s.status === 'confirmed' ? 'good' : s.status === 'bounced' ? 'signal' : 'neutral'} className="capitalize">{s.status}</Pill>{s.country && <span>{COUNTRIES.find((c) => c.code === s.country)?.name ?? s.country}</span>}{s.source && <span>from {s.source}</span>}<span className="tabular-nums">{when(s.created_at)}</span></span>
               </li>
             ))}
@@ -654,6 +734,8 @@ export function Staff() {
   const { data, error, reload } = useLoad<{ users: { id: number; email: string; name: string; role: 'admin' | 'editor'; disabled: boolean; created_at: string }[] }>('/admin/users')
   const [f, setF] = useState({ name: '', email: '', role: 'editor', password: '' })
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [resetting, setResetting] = useState<number | null>(null)
+  const [temp, setTemp] = useState('')
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 2xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <Panel kicker={`${data?.users.length ?? 0} accounts`} title="Who can sign in" flush>
@@ -667,10 +749,26 @@ export function Staff() {
                 <span className="block truncate text-[13px] text-muted">{u.email} · since {new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               </span>
               {u.id !== me.id && (
-                <span className="flex gap-2">
+                <span className="flex flex-wrap gap-2">
                   <Btn size="sm" tone="line" onClick={() => api(`/admin/users/${u.id}`, { method: 'PATCH', body: { role: u.role === 'admin' ? 'editor' : 'admin' } }).then(reload)}>{u.role === 'admin' ? 'Make editor' : 'Make admin'}</Btn>
                   <Btn size="sm" tone={u.disabled ? 'line' : 'danger'} onClick={() => api(`/admin/users/${u.id}`, { method: 'PATCH', body: { disabled: !u.disabled } }).then(reload)}>{u.disabled ? 'Switch on' : 'Switch off'}</Btn>
+                  <Btn size="sm" tone="line" onClick={() => setResetting(resetting === u.id ? null : u.id)}>New password</Btn>
+                  <ConfirmBtn label="Delete" question={`Delete ${u.name}’s account?`} onConfirm={() => api(`/admin/users/${u.id}`, { method: 'DELETE' }).then(reload).catch((e: ApiError) => setMessage({ kind: 'error', text: e.message }))} />
                 </span>
+              )}
+              {resetting === u.id && (
+                <form
+                  className="flex basis-full flex-wrap items-end gap-2 bg-paper px-3 py-3"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    api(`/admin/users/${u.id}/password`, { body: { password: temp } })
+                      .then(() => { setMessage({ kind: 'ok', text: `${u.name} has a new first password and was signed out everywhere. Give it to them privately; they must replace it at sign-in.` }); setResetting(null); setTemp('') })
+                      .catch((e2: ApiError) => setMessage({ kind: 'error', text: e2.message }))
+                  }}
+                >
+                  <Field label={`New first password for ${u.name}`} hint="At least 12 characters. It also unlocks a locked account." className="min-w-[240px] flex-1"><PasswordInput value={temp} onChange={setTemp} autoComplete="new-password" /></Field>
+                  <Btn type="submit" disabled={temp.length < 12}>Set password</Btn>
+                </form>
               )}
             </li>
           ))}

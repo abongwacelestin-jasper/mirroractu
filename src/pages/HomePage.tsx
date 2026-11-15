@@ -1,4 +1,5 @@
 import React from 'react'
+import { WebTrends } from '@/components/feed/WebTrends'
 import { Link } from 'react-router-dom'
 
 import { AdSlot } from '@/components/ads/AdSlot'
@@ -143,6 +144,9 @@ export function HomePage() {
           </ul>
         </Container>
       </section>
+
+      {/* Live from outside sources, for the reader's country. Shown only once the API has lists. */}
+      <WebTrends level="country" />
 
       <section className="bg-paper py-[52px] lg:py-[72px]">
         <Container className="grid gap-10 lg:grid-cols-12 lg:gap-x-8">

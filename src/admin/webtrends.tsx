@@ -8,7 +8,7 @@ import { RefreshCw } from 'lucide-react'
 
 import { ApiError, api } from '@/lib/api'
 import { useAdmin } from './AdminApp'
-import { Btn, Empty, Field, Notice, Panel, Pill, Segmented, ago, inputClass, when } from './ui'
+import { Btn, ConfirmBtn, Empty, Field, Notice, Panel, Pill, Segmented, ago, inputClass, when } from './ui'
 
 type SourceState = {
   id: string; label: string; credit: { name: string; url: string }; configured: boolean; enabled: boolean; pausedUntil: string | null
@@ -24,7 +24,7 @@ const until = (iso: string) => {
   return m <= 0 ? 'due now' : m < 60 ? `in ${m} min` : m < 2880 ? `in ${Math.round(m / 60)} h` : `in ${Math.round(m / 1440)} days`
 }
 
-function SourceCard({ s, admin, onChange }: { s: SourceState; admin: boolean; onChange: () => void }) {
+function SourceCard({ s, admin, onChange, onSync }: { s: SourceState; admin: boolean; onChange: () => void; onSync: (source: string, reset: boolean) => void }) {
   const used = s.budget ? Math.min(100, Math.round((s.requestsToday / s.budget) * 100)) : 0
   const state: [string, 'good' | 'warn' | 'signal' | 'neutral'] = !s.configured ? ['Not in WEB_TRENDS_SOURCES', 'neutral'] : !s.enabled ? ['Switched off', 'neutral'] : s.pausedUntil ? [`Paused ${until(s.pausedUntil)}`, 'warn'] : used >= 100 ? ['Allowance used, resumes tomorrow', 'warn'] : ['Fetching', 'good']
   return (
@@ -41,10 +41,13 @@ function SourceCard({ s, admin, onChange }: { s: SourceState; admin: boolean; on
           <div><dt className="text-[12px] text-muted">Errors today</dt><dd className="font-semibold tabular-nums">{s.errorsToday}</dd></div>
         </dl>
         {s.lists.unsupported > 0 && <p className="text-[12.5px] text-muted">{s.lists.unsupported} {s.lists.unsupported === 1 ? 'country has' : 'countries have'} no list from this source. They are tried again every three days.</p>}
-        {admin && s.configured && (
-          <Btn tone="line" size="sm" className="justify-self-start" onClick={() => api(`/admin/web-trends/sources/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled } }).then(onChange)}>
-            {s.enabled ? 'Switch this source off' : 'Switch this source on'}
-          </Btn>
+        {s.configured && (
+          <div className="flex flex-wrap gap-2">
+            <Btn tone="line" size="sm" disabled={!s.enabled} onClick={() => onSync(s.id, false)}><RefreshCw className="size-3.5" /> Sync now</Btn>
+            {admin && s.pausedUntil && <Btn tone="line" size="sm" onClick={() => api(`/admin/web-trends/sources/${s.id}/resume`, { body: {} }).then(onChange)}>Lift the pause</Btn>}
+            {admin && <ConfirmBtn tone="line" label="Resync from empty" question="Empty these lists and fetch again?" onConfirm={() => onSync(s.id, true)} />}
+            {admin && <Btn tone="line" size="sm" onClick={() => api(`/admin/web-trends/sources/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled } }).then(onChange)}>{s.enabled ? 'Switch off' : 'Switch on'}</Btn>}
+          </div>
         )}
       </div>
     </Panel>
@@ -57,6 +60,7 @@ export function WebTrendsAdmin() {
   const [error, setError] = useState('')
   const [source, setSource] = useState('google')
   const [word, setWord] = useState('')
+  const [synced, setSynced] = useState('')
   const reload = useCallback(() => {
     api<Status>('/admin/web-trends').then((d) => (setData(d), setError(''))).catch((e: ApiError) => setError(e.message))
   }, [])
@@ -69,6 +73,11 @@ export function WebTrendsAdmin() {
   if (error) return <Notice kind="error">{error}</Notice>
   if (!data) return <div className="shimmer h-[420px] bg-paper-2" />
   const feeds = data.feeds.filter((f) => f.source === source && f.status !== 'unsupported')
+  const admin = user.role === 'admin'
+  const sync = (src: string, reset: boolean) =>
+    api<{ queued: number; minutes: number }>('/admin/web-trends/sync', { body: { source: src, reset } })
+      .then((r) => { setSynced(`${r.queued} ${r.queued === 1 ? 'list' : 'lists'} queued${reset ? ' from empty' : ''}. The engine fetches them one at a time at each source’s pace: about ${Math.max(1, r.minutes)} ${r.minutes > 1 ? 'minutes' : 'minute'}, longer if a source is paused.`); reload() })
+      .catch((e: ApiError) => setSynced(e.message))
   const saveBlocked = (terms: string[]) => api('/admin/web-trends/blocked', { method: 'PUT', body: { terms } }).then(reload).catch((e: ApiError) => setError(e.message))
 
   return (
@@ -77,8 +86,15 @@ export function WebTrendsAdmin() {
       <Notice>
         These lists come from outside sources and appear on the Trends page under “Trending on the web”, apart from the newsroom’s own trends. The engine fetches the lists readers are looking at first, slows down for lists that are not changing, stays inside each source’s daily allowance, and pauses a source that asks it to. A failed fetch never removes a list: the last good one stays up.
       </Notice>
+      <div className="flex flex-wrap items-center gap-2 border-t-2 border-ink bg-white px-4 py-3 sm:px-5">
+        <p className="mr-auto min-w-[200px] flex-1 text-[14px]"><b>Sync.</b> <span className="text-muted">Queue lists for a fresh fetch, or recalculate the newsroom’s own trends.</span></p>
+        <Btn size="sm" onClick={() => sync('all', false)}><RefreshCw className="size-3.5" /> Sync every source</Btn>
+        {admin && <ConfirmBtn tone="line" label="Resync everything from empty" question="Empty every outside list and fetch again?" onConfirm={() => sync('all', true)} />}
+        <Btn size="sm" tone="line" onClick={() => api('/admin/trends/recalculate', { body: {} }).then(() => setSynced('Newsroom trends recalculated, and the site’s saved copies cleared. Readers get fresh pages on their next visit.'))}>Recalculate newsroom trends</Btn>
+      </div>
+      {synced && <Notice kind="ok">{synced}</Notice>}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 2xl:grid-cols-3">
-        {data.sources.map((s) => <SourceCard key={s.id} s={s} admin={user.role === 'admin'} onChange={reload} />)}
+        {data.sources.map((s) => <SourceCard key={s.id} s={s} admin={admin} onChange={reload} onSync={sync} />)}
       </div>
 
       <Panel title="Every list" kicker="One per source and country" action={<Segmented label="Source" value={source} onChange={setSource} options={data.sources.map((s) => [s.id, s.credit.name.replace('The ', ''), s.lists.ok] as [string, string, number])} />} flush>

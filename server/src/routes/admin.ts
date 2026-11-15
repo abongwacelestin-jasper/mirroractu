@@ -16,7 +16,7 @@ import { deskUrl, mailConfigured, sendLater, sendMail, siteUrl } from '../mail/s
 import { TEMPLATES, buildEdition, confirmLink, latestStories, ref, sample, sendEdition, unsubscribeLink } from '../mail/service'
 import * as T from '../mail/templates'
 import { deliverability } from '../mail/check'
-import { engineStatus, refreshNow, setBlocked, setSourceEnabled } from '../webtrends/engine'
+import { engineStatus, refreshNow, resumeSource, setBlocked, setSourceEnabled, syncAll } from '../webtrends/engine'
 import { SOURCES } from '../webtrends/sources'
 
 const CATS = ['world', 'africa', 'business', 'tech', 'climate', 'health', 'culture', 'sport'] as const
@@ -227,6 +227,21 @@ export async function adminRoutes(app: FastifyInstance) {
       return { ok: true }
     })
 
+    /** Publish, unpublish or delete several stories at once. Deleting needs an administrator. */
+    admin.post('/stories/bulk', async (req, reply) => {
+      const body = z.object({ ids: z.array(z.string().max(120)).min(1).max(200), action: z.enum(['publish', 'unpublish', 'delete']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const { ids, action } = body.data
+      if (action === 'delete' && userOf(req).role !== 'admin') return reply.code(403).send({ error: 'Only an administrator can delete stories.' })
+      const rows = action === 'delete'
+        ? await q('DELETE FROM stories WHERE id = ANY($1) RETURNING id', [ids])
+        : await q('UPDATE stories SET published = $2, version = version + 1, updated_at = now(), updated_by = $3 WHERE id = ANY($1) AND published <> $2 RETURNING id', [ids, action === 'publish', userOf(req).id])
+      await bump('content')
+      await bump('trends')
+      await audit(userOf(req), `stories.bulk.${action}`, undefined, { count: rows.length, ids: rows.map((r) => r.id).slice(0, 50) })
+      return { ok: true, changed: rows.length }
+    })
+
     /* Wire */
     admin.post('/wire', async (req, reply) => {
       const body = z.object({ desk: z.string().trim().min(2).max(40), cat: z.enum(CATS), text: z.string().trim().min(8).max(300), storyId: z.string().max(120).optional().or(z.literal('')), kind: z.enum(['update', 'confirmed', 'result', 'data']) }).safeParse(req.body)
@@ -242,6 +257,15 @@ export async function adminRoutes(app: FastifyInstance) {
       await q('DELETE FROM wire_items WHERE id = $1', [id])
       await audit(userOf(req), 'wire.deleted', String(id))
       return { ok: true }
+    })
+
+    admin.post('/wire/bulk', async (req, reply) => {
+      const body = z.object({ ids: z.array(z.coerce.number().int()).min(1).max(500), action: z.enum(['delete']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const rows = await q('DELETE FROM wire_items WHERE id = ANY($1) RETURNING id', [body.data.ids])
+      await bump('trends')
+      await audit(userOf(req), 'wire.bulk.delete', undefined, { count: rows.length })
+      return { ok: true, changed: rows.length }
     })
 
     /* Inbox */
@@ -262,6 +286,23 @@ export async function adminRoutes(app: FastifyInstance) {
       return { ok: true, readerEmailed: emailed }
     })
 
+    /** Remove reports for good, with the reader's address. Administrators only. */
+    admin.post('/corrections/bulk', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const body = z.object({ ids: z.array(z.coerce.number().int()).min(1).max(500), action: z.enum(['delete']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const rows = await q('DELETE FROM corrections WHERE id = ANY($1) RETURNING id', [body.data.ids])
+      await audit(userOf(req), 'corrections.bulk.delete', undefined, { count: rows.length })
+      return { ok: true, changed: rows.length }
+    })
+
+    admin.post('/enquiries/bulk', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const body = z.object({ ids: z.array(z.coerce.number().int()).min(1).max(500), action: z.enum(['delete']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const rows = await q('DELETE FROM enquiries WHERE id = ANY($1) RETURNING id', [body.data.ids])
+      await audit(userOf(req), 'enquiries.bulk.delete', undefined, { count: rows.length })
+      return { ok: true, changed: rows.length }
+    })
+
     admin.get('/enquiries', async () => ({ enquiries: await q('SELECT * FROM enquiries ORDER BY created_at DESC LIMIT 200') }))
 
     admin.get('/subscribers', async () => ({ subscribers: await q('SELECT id, email, status, source, country, created_at, confirmed_at FROM subscribers ORDER BY created_at DESC LIMIT 1000') }))
@@ -272,6 +313,30 @@ export async function adminRoutes(app: FastifyInstance) {
       const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
       reply.header('Content-Type', 'text/csv; charset=utf-8').header('Content-Disposition', 'attachment; filename="mirroractu-subscribers.csv"')
       return ['email,status,source,country,signed_up', ...rows.map((r) => [r.email, r.status, r.source, r.country, new Date(r.created_at).toISOString()].map(cell).join(','))].join('\n')
+    })
+
+    /**
+     * Several subscribers at once. Administrators only.
+     *   delete       remove the address for good (for a reader who asks to be forgotten)
+     *   unsubscribe  stop sending, keep the record so they are not emailed again by mistake
+     *   resend       send the confirmation email again to those who have not confirmed
+     */
+    admin.post('/subscribers/bulk', { preHandler: requireUser('admin'), config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
+      const body = z.object({ ids: z.array(z.coerce.number().int()).min(1).max(500), action: z.enum(['delete', 'unsubscribe', 'resend']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const { ids, action } = body.data
+      let changed = 0
+      if (action === 'delete') changed = (await q('DELETE FROM subscribers WHERE id = ANY($1) RETURNING id', [ids])).length
+      if (action === 'unsubscribe') changed = (await q("UPDATE subscribers SET status = 'unsubscribed', unsubscribed_at = now() WHERE id = ANY($1) AND status IN ('pending', 'confirmed') RETURNING id", [ids])).length
+      if (action === 'resend') {
+        if (!mailConfigured()) return reply.code(409).send({ error: 'Email is not connected yet: RESEND_API_KEY is not set on the API.' })
+        // Only people who asked and have not answered, 100 at a time, and not twice within three minutes.
+        const rows = await q<{ email: string; token: string }>("UPDATE subscribers SET confirm_sent_at = now() WHERE id IN (SELECT id FROM subscribers WHERE id = ANY($1) AND status = 'pending' AND (confirm_sent_at IS NULL OR confirm_sent_at < now() - interval '3 minutes') ORDER BY id LIMIT 100) RETURNING email, token", [ids])
+        for (const r of rows) sendLater({ to: r.email, kind: 'subscribe.confirm', mail: T.confirmSubscription({ site: siteUrl() }, confirmLink(r.token)) })
+        changed = rows.length
+      }
+      await audit(userOf(req), `subscribers.bulk.${action}`, undefined, { count: changed })
+      return { ok: true, changed }
     })
 
     /**
@@ -308,12 +373,31 @@ export async function adminRoutes(app: FastifyInstance) {
         templates: TEMPLATES.map(([id, name, when]) => ({ id, name, when })),
         stories: (await latestStories(14)).map((x) => ({ id: x.id, h: x.h, section: x.section })),
         recent: await q('SELECT id, at, kind, recipient, subject, status, error FROM emails ORDER BY at DESC LIMIT 60'),
-        editions: await q('SELECT n.id, n.subject, n.status, n.recipients, n.delivered, n.failed, n.created_at, u.name AS sent_by FROM newsletters n LEFT JOIN users u ON u.id = n.sent_by ORDER BY n.created_at DESC LIMIT 20'),
+        editions: await q('SELECT n.id, n.subject, n.intro, n.story_ids, n.status, n.recipients, n.delivered, n.failed, n.created_at, u.name AS sent_by FROM newsletters n LEFT JOIN users u ON u.id = n.sent_by ORDER BY n.created_at DESC LIMIT 20'),
       }
     })
 
     /** The DNS records and settings that decide whether email reaches the inbox or the spam folder. */
     admin.get('/mail/check', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async () => deliverability())
+
+    /**
+     * Editions already sent. "delete" removes the records. "reset" releases an edition stuck on
+     * "Sending" (for example after a restart mid-send), so the next one can go out.
+     */
+    admin.post('/newsletters/bulk', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const body = z.object({ ids: z.array(z.coerce.number().int()).min(1).max(200), action: z.enum(['delete', 'reset']) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      const rows = body.data.action === 'delete' ? await q("DELETE FROM newsletters WHERE id = ANY($1) AND status <> 'sending' RETURNING id", [body.data.ids]) : await q("UPDATE newsletters SET status = 'failed' WHERE id = ANY($1) AND status = 'sending' RETURNING id", [body.data.ids])
+      await audit(userOf(req), `newsletters.bulk.${body.data.action}`, undefined, { count: rows.length })
+      return { ok: true, changed: rows.length }
+    })
+
+    /** Empty the log of sent email. The emails themselves are not affected. */
+    admin.delete('/mail/log', { preHandler: requireUser('admin') }, async (req) => {
+      const rows = await q('DELETE FROM emails RETURNING id')
+      await audit(userOf(req), 'mail.log.cleared', undefined, { count: rows.length })
+      return { ok: true, changed: rows.length }
+    })
 
     const templateId = z.enum(TEMPLATES.map((t) => t[0]) as [string, ...string[]])
     const editionIn = z.object({ subject: z.string().trim().min(6).max(150), intro: z.string().trim().max(600).optional(), storyIds: z.array(z.string().max(120)).min(1).max(8), country: z.string().max(3).optional() })
@@ -392,6 +476,58 @@ export async function adminRoutes(app: FastifyInstance) {
       await q('UPDATE users SET disabled = coalesce($2, disabled), role = coalesce($3, role) WHERE id = $1', [id, body.data.disabled ?? null, body.data.role ?? null])
       if (body.data.disabled) await q('DELETE FROM sessions WHERE user_id = $1', [id])
       await audit(userOf(req), 'user.updated', String(id), body.data)
+      return { ok: true }
+    })
+
+    /** A new first password for someone who is locked out. They must replace it at their next sign-in. */
+    admin.post('/users/:id/password', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params)
+      const body = z.object({ password: z.string().min(12).max(200) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send({ error: 'The password needs at least 12 characters.' })
+      if (id === userOf(req).id) return reply.code(400).send({ error: 'Change your own password under Your account.' })
+      const row = await one('UPDATE users SET password_hash = $2, must_change_password = true, failed_logins = 0, locked_until = NULL WHERE id = $1 RETURNING email', [id, await hashPassword(body.data.password)])
+      if (!row) return reply.code(404).send({ error: 'No such person.' })
+      await q('DELETE FROM sessions WHERE user_id = $1', [id])
+      await audit(userOf(req), 'user.password_reset', String(id))
+      return { ok: true }
+    })
+
+    /** Remove an account for good. What they wrote and changed stays, without their name. */
+    admin.delete('/users/:id', { preHandler: requireUser('admin') }, async (req, reply) => {
+      const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params)
+      if (id === userOf(req).id) return reply.code(400).send({ error: 'You cannot delete your own account. Ask another administrator.' })
+      const row = await one<{ email: string; role: string }>('SELECT email, role FROM users WHERE id = $1', [id])
+      if (!row) return reply.code(404).send({ error: 'No such person.' })
+      await q('DELETE FROM users WHERE id = $1', [id])
+      await audit(userOf(req), 'user.deleted', String(id), { email: row.email, role: row.role })
+      return { ok: true }
+    })
+
+    /* ---------- Sync and reset ---------- */
+
+    /** Work out the newsroom's own trends again now, and serve the edition fresh. */
+    admin.post('/trends/recalculate', async (req) => {
+      await bump('trends')
+      await bump('content')
+      await bump('webtrends')
+      await audit(userOf(req), 'cache.cleared')
+      return { ok: true }
+    })
+
+    /** Queue outside lists for fetching: one source or all. `reset` empties them first (administrators). */
+    admin.post('/web-trends/sync', { config: { rateLimit: { max: 12, timeWindow: '10 minutes' } } }, async (req, reply) => {
+      const body = z.object({ source: z.enum(['all', ...SOURCES.map((s) => s.id)] as [string, ...string[]]).default('all'), reset: z.boolean().default(false) }).safeParse(req.body)
+      if (!body.success) return reply.code(400).send(bad(body.error))
+      if (body.data.reset && userOf(req).role !== 'admin') return reply.code(403).send({ error: 'Only an administrator can reset the lists.' })
+      const result = await syncAll(body.data.source === 'all' ? null : body.data.source, body.data.reset)
+      await audit(userOf(req), body.data.reset ? 'webtrends.reset' : 'webtrends.sync', body.data.source, result)
+      return result
+    })
+
+    admin.post('/web-trends/sources/:id/resume', { preHandler: requireUser('admin') }, async (req) => {
+      const { id } = z.object({ id: z.enum(SOURCES.map((s) => s.id) as [string, ...string[]]) }).parse(req.params)
+      await resumeSource(id)
+      await audit(userOf(req), 'webtrends.resumed', id)
       return { ok: true }
     })
 

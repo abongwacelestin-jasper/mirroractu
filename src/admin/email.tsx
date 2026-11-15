@@ -3,12 +3,12 @@
  * sends exactly as a reader receives it, and check what went out.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, Monitor, Send, Smartphone } from 'lucide-react'
+import { Check as CheckIcon, Monitor, Send, Smartphone } from 'lucide-react'
 
 import { COUNTRIES } from '@/data/geo'
 import { ApiError, api } from '@/lib/api'
 import { useAdmin } from './AdminApp'
-import { Btn, Empty, Field, Kpi, Notice, Panel, Pill, Segmented, inputClass, when } from './ui'
+import { Btn, BulkBar, Check, ConfirmBtn, Empty, Field, Kpi, Notice, Panel, Pill, Segmented, inputClass, useSelection, when } from './ui'
 
 type MailInfo = {
   configured: boolean
@@ -22,7 +22,7 @@ type MailInfo = {
   templates: { id: string; name: string; when: string }[]
   stories: { id: string; h: string; section: string }[]
   recent: { id: number; at: string; kind: string; recipient: string; subject: string; status: 'sent' | 'failed' | 'not_configured'; error: string | null }[]
-  editions: { id: number; subject: string; status: 'sending' | 'sent' | 'failed'; recipients: number; delivered: number; failed: number; created_at: string; sent_by: string | null }[]
+  editions: { id: number; subject: string; intro: string | null; story_ids: string[]; status: 'sending' | 'sent' | 'failed'; recipients: number; delivered: number; failed: number; created_at: string; sent_by: string | null }[]
 }
 type Rendered = { subject: string; html: string; text: string }
 
@@ -128,7 +128,9 @@ function Status({ info }: { info: MailInfo }) {
 
 /* ---------- The morning email ---------- */
 
-function Composer({ info, reload }: { info: MailInfo; reload: () => void }) {
+type Reuse = { subject: string; intro: string; storyIds: string[]; n: number }
+
+function Composer({ info, reload, reuse }: { info: MailInfo; reload: () => void; reuse: Reuse | null }) {
   const { user } = useAdmin()
   const [subject, setSubject] = useState('')
   const [intro, setIntro] = useState('Good morning. Here is what is confirmed, what is still open, and why it matters today.')
@@ -140,9 +142,18 @@ function Composer({ info, reload }: { info: MailInfo; reload: () => void }) {
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
+  // An earlier edition chosen under Sent, to send again or to edit: only stories still published are kept.
+  useEffect(() => {
+    if (!reuse) return
+    setSubject(reuse.subject)
+    setIntro(reuse.intro)
+    setPicked(reuse.storyIds.filter((id) => info.stories.some((x) => x.id === id)))
+    setNote({ kind: 'ok', text: 'Loaded from an earlier edition. Check it, then send a test.' })
+  }, [reuse?.n])
+
   // Start with the five newest stories, the first as the lead.
   useEffect(() => {
-    if (picked.length || !info.stories.length) return
+    if (reuse || picked.length || !info.stories.length) return
     setPicked(info.stories.slice(0, 5).map((s) => s.id))
     setSubject(`MirrorActu morning: ${info.stories[0].h}`.slice(0, 150))
   }, [info.stories, picked.length])
@@ -221,7 +232,7 @@ function Composer({ info, reload }: { info: MailInfo; reload: () => void }) {
               <p className="text-[14.5px] font-semibold">Send this edition to {n.toLocaleString('en')} confirmed {n === 1 ? 'subscriber' : 'subscribers'} now?</p>
               <p className="mt-1 text-[13.5px] text-muted">It goes out immediately and cannot be recalled. Send yourself a test first if you have not.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Btn tone="signal" disabled={busy} onClick={() => act('/admin/newsletter/send', (r) => `Sending to ${r.recipients.toLocaleString('en')} ${r.recipients === 1 ? 'subscriber' : 'subscribers'}. Progress is under Sent.`)}><Check className="size-4" /> Yes, send it</Btn>
+                <Btn tone="signal" disabled={busy} onClick={() => act('/admin/newsletter/send', (r) => `Sending to ${r.recipients.toLocaleString('en')} ${r.recipients === 1 ? 'subscriber' : 'subscribers'}. Progress is under Sent.`)}><CheckIcon className="size-4" /> Yes, send it</Btn>
                 <Btn tone="ghost" disabled={busy} onClick={() => setConfirming(false)}>Not yet</Btn>
               </div>
             </div>
@@ -294,28 +305,51 @@ const KIND: Record<string, string> = Object.fromEntries([
 const kindName = (k: string) => (k.startsWith('test.') ? `Test: ${KIND[k.slice(5)] ?? k.slice(5)}` : KIND[k] ?? k)
 const SENT: Record<MailInfo['recent'][number]['status'], [string, 'good' | 'signal' | 'neutral']> = { sent: ['Accepted', 'good'], failed: ['Failed', 'signal'], not_configured: ['Not connected', 'neutral'] }
 
-function Sent({ info }: { info: MailInfo }) {
+function Sent({ info, reload, onReuse }: { info: MailInfo; reload: () => void; onReuse: (e: MailInfo['editions'][number]) => void }) {
+  const { user } = useAdmin()
+  const admin = user.role === 'admin'
+  const selection = useSelection(info.editions.map((e) => e.id))
+  const [note, setNote] = useState('')
+  const bulk = (action: 'delete' | 'reset') =>
+    api<{ changed: number }>('/admin/newsletters/bulk', { body: { ids: selection.ids, action } })
+      .then((r) => {
+        setNote(action === 'delete' ? `${r.changed} ${r.changed === 1 ? 'record' : 'records'} deleted. Editions still being sent are kept.` : r.changed ? `${r.changed} stuck ${r.changed === 1 ? 'edition' : 'editions'} released. You can send again.` : 'None of the ticked editions was stuck on “Sending”.')
+        selection.clear()
+        reload()
+      })
+      .catch((e: ApiError) => setNote(e.message))
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <Panel title="Editions" kicker="The morning email" flush>
         {info.editions.length === 0 ? <Empty title="No edition has been sent yet.">Write one under Morning email.</Empty> : (
           <ul>
+            {admin && (
+              <li>
+                <BulkBar selection={selection} total={info.editions.length} noun={['edition', 'editions']} note="Reset releases an edition stuck on “Sending”. Delete removes the record only: emails already sent cannot be recalled.">
+                  <Btn size="sm" tone="line" onClick={() => bulk('reset')}>Reset stuck</Btn>
+                  <ConfirmBtn label="Delete record" question={`Delete ${selection.count} ${selection.count === 1 ? 'record' : 'records'}?`} onConfirm={() => bulk('delete')} />
+                </BulkBar>
+              </li>
+            )}
             {info.editions.map((e) => (
-              <li key={e.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule px-4 py-3 sm:px-5">
-                <span className="min-w-0">
+              <li key={e.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-rule py-2.5 pr-4 sm:pr-5 ${admin ? 'pl-1 sm:pl-2' : 'pl-4 sm:pl-5'} ${selection.has(e.id) ? 'bg-paper' : ''}`}>
+                {admin && <Check checked={selection.has(e.id)} onChange={() => selection.toggle(e.id)} label={`Tick: ${e.subject}`} />}
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14.5px] font-semibold">{e.subject}</span>
                   <span className="block text-[12.5px] text-muted">{when(e.created_at)}{e.sent_by ? ` · sent by ${e.sent_by}` : ''}</span>
                 </span>
                 <span className="flex items-center gap-2.5 text-[13px] tabular-nums">
                   <Pill tone={e.status === 'sent' ? 'good' : e.status === 'failed' ? 'signal' : 'warn'}>{e.status === 'sending' ? 'Sending' : e.status === 'sent' ? 'Sent' : 'Failed'}</Pill>
                   <span><b>{e.delivered.toLocaleString('en')}</b> of {e.recipients.toLocaleString('en')} accepted{e.failed > 0 ? `, ${e.failed.toLocaleString('en')} failed` : ''}</span>
+                  <Btn size="sm" tone="line" onClick={() => onReuse(e)}>Use again</Btn>
                 </span>
               </li>
             ))}
           </ul>
         )}
       </Panel>
-      <Panel title="Recent email" kicker="Last 60, every kind" flush>
+      {note && <Notice>{note}</Notice>}
+      <Panel title="Recent email" kicker="Last 60, every kind" flush action={admin && info.recent.length > 0 ? <ConfirmBtn label="Clear the log" tone="line" question="Empty the log?" onConfirm={() => api('/admin/mail/log', { method: 'DELETE' }).then(reload)} /> : undefined}>
         {info.recent.length === 0 ? <Empty title="Nothing has been sent yet.">Sign-ups, corrections, enquiries and staff changes each send email. They appear here.</Empty> : (
           <ul>
             {info.recent.map((m) => (
@@ -342,6 +376,7 @@ export function Email() {
   const [info, setInfo] = useState<MailInfo | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'compose' | 'templates' | 'sent'>('compose')
+  const [reuse, setReuse] = useState<Reuse | null>(null)
   const reload = useCallback(() => {
     api<MailInfo>('/admin/mail').then(setInfo).catch((e: ApiError) => setError(e.message))
   }, [])
@@ -367,9 +402,9 @@ export function Email() {
       <Status info={info} />
       {info.configured && <InboxCheck />}
       <Segmented label="Email" value={tab} onChange={setTab} options={[['compose', 'Morning email'], ['templates', 'All emails', info.templates.length], ['sent', 'Sent', info.editions.length]]} />
-      {tab === 'compose' && <Composer info={info} reload={reload} />}
+      {tab === 'compose' && <Composer info={info} reload={reload} reuse={reuse} />}
       {tab === 'templates' && <Templates info={info} reload={reload} />}
-      {tab === 'sent' && <Sent info={info} />}
+      {tab === 'sent' && <Sent info={info} reload={reload} onReuse={(e) => { setReuse({ subject: e.subject, intro: e.intro ?? '', storyIds: e.story_ids ?? [], n: Date.now() }); setTab('compose') }} />}
     </div>
   )
 }

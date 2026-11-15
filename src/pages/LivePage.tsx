@@ -1,5 +1,6 @@
 import React from 'react'
 
+import { WebTrends } from '@/components/feed/WebTrends'
 import { AdSlot } from '@/components/ads/AdSlot'
 import { LiveBadge, LiveWire } from '@/components/live/LiveFeed'
 import { LiveHub } from '@/components/live/LiveHub'
@@ -41,6 +42,8 @@ export function LivePage() {
           <AdSlot format="leaderboard" slot={1} placement="the foot of the live data page" className="mt-12" />
         </Container>
       </section>
+      {/* Live from outside sources: searches, news and Wikipedia, for the reader's country. */}
+      <WebTrends level="country" />
     </>
   )
 }

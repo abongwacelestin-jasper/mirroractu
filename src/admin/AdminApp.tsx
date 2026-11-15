@@ -13,6 +13,7 @@ import { WIRE_KIND_LABEL, useLiveStatus, useWire, useWireSource } from '@/live/f
 import { Avatar, Btn, Drawer, Field, Notice, Pill, ago, inputClass } from './ui'
 import { Email } from './email'
 import { WebTrendsAdmin } from './webtrends'
+import { AccountMenu, GoItem, GoTo, Menu as DropMenu } from './navbar'
 
 // The Engagement page carries the map outlines, so it is loaded only when opened.
 const Engagement = React.lazy(() => import('./engagement').then((m) => ({ default: m.Engagement })))
@@ -184,6 +185,18 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   )
 
   const [title, sub] = TITLES[current.id]
+  const actions: { label: string; hint: string; run: () => void }[] = [
+    { label: 'New story', hint: 'Write and publish', run: () => navigate(adminPath('stories?new=1')) },
+    { label: 'File a wire update', hint: 'Reaches every open page', run: () => navigate(adminPath('wire')) },
+    { label: 'Write the morning email', hint: 'Compose, test, send', run: () => navigate(adminPath('email')) },
+    { label: 'Sync web trends', hint: 'Queue every outside list for a fresh fetch', run: () => api('/admin/web-trends/sync', { body: { source: 'all', reset: false } }).then(() => navigate(adminPath('webtrends'))).catch(() => navigate(adminPath('webtrends'))) },
+    { label: 'Recalculate newsroom trends', hint: 'And clear the site’s saved copies', run: () => api('/admin/trends/recalculate', { body: {} }).then(reload).catch(() => {}) },
+    ...(HAS_SITE_LINK ? [{ label: 'View the site', hint: 'Opens the public site', run: () => window.open(SITE_URL || '/', '_blank', 'noopener') }] : []),
+  ]
+  const goItems: GoItem[] = [
+    ...all.map((t): GoItem => ({ id: `page:${t.id}`, label: t.label, hint: TITLES[t.id][1], group: 'Pages', run: () => navigate(adminPath(t.id)) })),
+    ...actions.map((a): GoItem => ({ id: `action:${a.label}`, label: a.label, hint: a.hint, group: 'Actions', run: a.run })),
+  ]
 
   return (
     <AdminContext.Provider value={{ user, overview, corrections, reload }}>
@@ -216,11 +229,22 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
                 <h1 className="truncate text-[19px] font-extrabold tracking-[-0.03em] sm:text-[22px]">{title}</h1>
                 <p className="hidden truncate text-[12.5px] text-muted sm:block">{sub} · {EDITION_DATE}</p>
               </div>
+              <GoTo items={goItems} onOpenStory={(id) => navigate(adminPath(`stories?edit=${encodeURIComponent(id)}`))} />
               <Btn tone="signal" size="sm" onClick={() => navigate(adminPath('stories?new=1'))} className="flex-none" aria-label="New story"><Plus className="size-4" /><span className="hidden sm:inline">New story</span></Btn>
+              <span className="hidden sm:block"><DropMenu ariaLabel="Quick actions" label="Actions" items={actions.map((a) => ({ label: a.label, hint: a.hint, run: a.run }))} /></span>
+              <span className="hidden lg:block"><AccountMenu name={user.name} role={user.role === 'admin' ? 'Administrator' : 'Editor'} onAccount={() => navigate(adminPath('account'))} onSignOut={signOut} /></span>
               <Btn tone="line" size="sm" onClick={() => setRail(true)} className="flex-none xl:hidden" aria-label="Open the Now panel">
                 <LiveDot /> Now{openCorrections > 0 && <span className="rounded-full bg-signal px-1.5 text-[11px] font-bold leading-[18px] text-ink">{openCorrections}</span>}
               </Btn>
             </div>
+            {/* Below 1024px the side menu is hidden, so every page is one tap away here. */}
+            <nav aria-label="Dashboard pages" className="no-scrollbar flex gap-1 overflow-x-auto border-t border-rule px-3 py-1.5 sm:px-5 lg:hidden">
+              {all.map(({ id, label, Icon }) => (
+                <Link key={id} to={adminPath(id)} aria-current={current.id === id ? 'page' : undefined} className="flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold text-muted transition-colors hover:text-ink aria-[current=page]:bg-ink aria-[current=page]:text-white">
+                  <Icon className="size-4" />{label}{badge(id) > 0 && <span className="rounded-full bg-signal px-1.5 text-[11px] font-bold leading-[18px] text-ink">{badge(id)}</span>}
+                </Link>
+              ))}
+            </nav>
           </header>
 
           <div className="lg:min-h-0 lg:flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]">

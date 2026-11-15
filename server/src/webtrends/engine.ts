@@ -329,6 +329,29 @@ export async function setBlocked(terms: string[]) {
   blockedCache = { at: 0, list: [] }
   await bump('webtrends')
 }
+/**
+ * Queue every list of a source (or of all sources) for fetching. Nothing is fetched at once:
+ * the engine works through the queue at each source's own pace, inside its allowance.
+ * With `reset`, the saved lists are emptied first, so everything on the site is rebuilt from
+ * fresh answers; until each one arrives, that list is simply absent.
+ */
+export async function syncAll(source: string | null, reset: boolean) {
+  const rows = await q<{ source: string }>(
+    `UPDATE web_trend_feeds SET next_at = now(), fails = 0, last_error = NULL${reset ? ", items = '[]', status = 'new', fetched_at = NULL, changed_at = NULL, interval_s = 0, mode = NULL" : ", status = CASE WHEN status = 'unsupported' THEN 'new' ELSE status END"}
+     WHERE ($1::text IS NULL OR source = $1) RETURNING source`,
+    [source]
+  )
+  if (reset) await bump('webtrends')
+  // Roughly how long the queue will take, at each source's gap.
+  const minutes = Math.max(...SOURCES.map((s) => Math.ceil((rows.filter((r) => r.source === s.id).length * s.gapMs) / 60000)), 0)
+  return { queued: rows.length, minutes }
+}
+
+/** Lift a pause early. The source is asked again at its normal gap; if it still objects, it pauses again. */
+export async function resumeSource(source: string) {
+  await q('UPDATE web_trend_sources SET cooldown_until = NULL, cooldown_s = 0, gap_ms = 0 WHERE source = $1', [source])
+}
+
 /** Ask for one list now. It still waits for the source's gap, pause and allowance. */
 export async function refreshNow(source: string, country: string) {
   await q('UPDATE web_trend_feeds SET next_at = now(), wanted_at = now() WHERE source = $1 AND country = $2', [source, country])
